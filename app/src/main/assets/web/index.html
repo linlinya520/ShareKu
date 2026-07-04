@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ShareKu</title>
+<link rel="stylesheet" href="/assets/style.css"></head>
+<body>
+<div class="topbar"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><h1>ShareKu</h1></div><div id="crumb" class="breadcrumb"></div></div>
+<div class="upload-bar" id="uploadArea"></div>
+<div class="grid" id="grid"></div>
+<div class="empty" id="empty"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg><p>目录为空</p></div>
+<div class="actions" id="actions">
+ <button class="btn btn-cyan" onclick="downloadSelected()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>下载 ZIP</button>
+ <button class="btn btn-danger" id="deleteBtn" onclick="deleteSelected()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>删除</button>
+ <button class="btn btn-ghost" onclick="clearSelection()">取消</button>
+</div>
+<div class="clip"><span class="clipicon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></span><input id="clipIn" placeholder="发送文字到手机…"><button class="btn-mini" onclick="sendClip()">发送</button><button class="btn-mini" onclick="getClip()" style="margin-left:3px">拉取</button></div>
+<div class="toast" id="toast"></div>
+<script src="/assets/script.js"></script>
+</body></html>
