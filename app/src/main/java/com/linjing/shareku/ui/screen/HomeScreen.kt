@@ -9,6 +9,10 @@ import android.os.Environment
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,8 +25,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -49,10 +55,12 @@ fun HomeScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
     val prefs = AppSingletons.preferencesManager
     val networkUtils = remember { NetworkUtils() }
 
     val isServerRunning by AppSingletons.isServerRunning.collectAsState()
+    val pendingIp by AppSingletons.pendingConfirmIp.collectAsState()
     var showCopied by remember { mutableStateOf(false) }
 
     // Collect prefs
@@ -205,8 +213,8 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 24.dp,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                clickable = false,
-                enableHaptic = false
+                onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick) },
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
             ) {
                 Row(
                     modifier = Modifier.padding(20.dp),
@@ -242,8 +250,8 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 20.dp,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                clickable = false,
-                enableHaptic = false
+                onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick) },
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
             ) {
                 Row(
                     modifier = Modifier
@@ -391,118 +399,161 @@ fun HomeScreen(
                 )
             }
 
-            // Server status
-            if (isServerRunning) {
-                CustomCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = 24.dp,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    clickable = false,
-                    enableHaptic = false
+            // Server status — always composed, animated transition
+            CustomCard(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 24.dp,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick) },
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                        .animateContentSize(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            )
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("🟢 服务运行中", style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        QrCodeCard(url = url, modifier = Modifier.size(200.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(url, style = MaterialTheme.typography.bodyLarge,
-                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(onClick = {
-                                clipboardManager.setText(AnnotatedString(url))
-                                showCopied = true
-                                scope.launch { delay(2000); showCopied = false }
-                            }) {
-                                Text(if (showCopied) "已复制！" else "复制链接")
+                    AnimatedContent(
+                        targetState = isServerRunning,
+                        transitionSpec = {
+                            if (targetState) {
+                                (slideInVertically(
+                                    initialOffsetY = { fullHeight -> fullHeight },
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow
+                                    )
+                                ) + fadeIn(tween(300))) togetherWith
+                                        (slideOutVertically(
+                                            targetOffsetY = { fullHeight -> -fullHeight },
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        ) + fadeOut(tween(200)))
+                            } else {
+                                (slideInVertically(
+                                    initialOffsetY = { fullHeight -> -fullHeight },
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow
+                                    )
+                                ) + fadeIn(tween(300))) togetherWith
+                                        (slideOutVertically(
+                                            targetOffsetY = { fullHeight -> fullHeight },
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        ) + fadeOut(tween(200)))
                             }
-                            Button(onClick = {
-                                generateWindowsMapScript(url, clipboardManager)
-                            }) {
-                                Text("映射 Z: 盘")
+                        },
+                        label = "serverState"
+                    ) { running ->
+                        if (running) {
+                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("🟢 服务运行中", style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                QrCodeCard(url = url, modifier = Modifier.size(200.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(url, style = MaterialTheme.typography.bodyLarge,
+                                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center, maxLines = 1)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilledTonalButton(onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        clipboardManager.setText(AnnotatedString(url))
+                                        showCopied = true
+                                        scope.launch { delay(2000); showCopied = false }
+                                    }) { Text(if (showCopied) "已复制！" else "复制链接") }
+                                    Button(onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        generateWindowsMapScript(url, clipboardManager)
+                                    }) { Text("映射 Z: 盘") }
+                                }
+                            }
+                        } else {
+                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Outlined.FolderOpen, null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(72.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("等待设备接入…", style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("从任意应用中分享文件\n或手动启动服务器",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                             }
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                Button(
-                    onClick = {
-                        val intent = Intent(context, ServerForegroundService::class.java).apply {
-                            action = ServerForegroundService.ACTION_STOP
-                        }
-                        context.startService(intent)
-                        AppSingletons.setServerRunning(false)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp)
-                ) {
-                    Icon(Icons.Default.Stop, null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("停止服务器", fontWeight = FontWeight.Bold)
-                }
-            } else {
-                // Empty state
-                CustomCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = 24.dp,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    clickable = false,
-                    enableHaptic = false
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(40.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+            // Start/Stop button
+            AnimatedContent(
+                targetState = isServerRunning,
+                transitionSpec = {
+                    fadeIn(tween(300)) togetherWith fadeOut(tween(200))
+                },
+                label = "btn"
+            ) { running ->
+                if (running) {
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            val intent = Intent(context, ServerForegroundService::class.java).apply {
+                                action = ServerForegroundService.ACTION_STOP
+                            }
+                            context.startService(intent)
+                            AppSingletons.setServerRunning(false)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp)
                     ) {
-                        Icon(Icons.Outlined.FolderOpen, null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(72.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("等待设备接入…",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("从任意应用中分享文件\n或手动启动服务器",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center)
+                        Icon(Icons.Default.Stop, null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("停止服务器", fontWeight = FontWeight.Bold)
                     }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        val intent = Intent(context, ServerForegroundService::class.java).apply {
-                            action = ServerForegroundService.ACTION_START
-                            putExtra(ServerForegroundService.EXTRA_HOST, ip)
-                            putExtra(ServerForegroundService.EXTRA_PORT, port)
-                            putStringArrayListExtra(ServerForegroundService.EXTRA_FILES,
-                                ArrayList(listOf(sharedDir)))
-                            putExtra(ServerForegroundService.EXTRA_AUTH, enableAuth)
-                            putExtra(ServerForegroundService.EXTRA_AUTH_USER, authUsername)
-                            putExtra(ServerForegroundService.EXTRA_AUTH_PASS, authPassword)
-                            putExtra(ServerForegroundService.EXTRA_WEBDAV, enableWebDav)
-                            putExtra(ServerForegroundService.EXTRA_UPLOAD, allowUpload)
-                            putExtra(ServerForegroundService.EXTRA_DELETE, allowDelete)
-                            putExtra(ServerForegroundService.EXTRA_OVERWRITE, allowOverwrite)
-                            putExtra(ServerForegroundService.EXTRA_CONFIRM, requireConnectionConfirm)
-                        }
-                        context.startService(intent)
-                        AppSingletons.setServerRunning(true)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp)
-                ) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("启动服务器", fontWeight = FontWeight.Bold)
+                } else {
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            val intent = Intent(context, ServerForegroundService::class.java).apply {
+                                action = ServerForegroundService.ACTION_START
+                                putExtra(ServerForegroundService.EXTRA_HOST, ip)
+                                putExtra(ServerForegroundService.EXTRA_PORT, port)
+                                putStringArrayListExtra(ServerForegroundService.EXTRA_FILES,
+                                    ArrayList(listOf(sharedDir)))
+                                putExtra(ServerForegroundService.EXTRA_AUTH, enableAuth)
+                                putExtra(ServerForegroundService.EXTRA_AUTH_USER, authUsername)
+                                putExtra(ServerForegroundService.EXTRA_AUTH_PASS, authPassword)
+                                putExtra(ServerForegroundService.EXTRA_WEBDAV, enableWebDav)
+                                putExtra(ServerForegroundService.EXTRA_UPLOAD, allowUpload)
+                                putExtra(ServerForegroundService.EXTRA_DELETE, allowDelete)
+                                putExtra(ServerForegroundService.EXTRA_OVERWRITE, allowOverwrite)
+                                putExtra(ServerForegroundService.EXTRA_CONFIRM, requireConnectionConfirm)
+                            }
+                            context.startService(intent)
+                            AppSingletons.setServerRunning(true)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("启动服务器", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -527,6 +578,33 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // Approval dialog
+    if (pendingIp != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("新设备请求连接") },
+            text = { Text("IP: $pendingIp\n正在请求访问 ShareKu，是否批准？") },
+            confirmButton = {
+                Button(onClick = {
+                    val intent = Intent(context, ServerForegroundService::class.java).apply {
+                        action = ServerForegroundService.ACTION_APPROVE
+                        putExtra(ServerForegroundService.EXTRA_CONFIRM_IP, pendingIp)
+                    }
+                    context.startService(intent)
+                }) { Text("批准") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = {
+                    val intent = Intent(context, ServerForegroundService::class.java).apply {
+                        action = ServerForegroundService.ACTION_DENY
+                        putExtra(ServerForegroundService.EXTRA_CONFIRM_IP, pendingIp)
+                    }
+                    context.startService(intent)
+                }) { Text("拒绝") }
+            }
+        )
     }
 
     // File browser dialog

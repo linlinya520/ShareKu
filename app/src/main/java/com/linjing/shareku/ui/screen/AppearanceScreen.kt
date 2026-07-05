@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DynamicForm
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.theme.ThemeMode
 import com.linjing.shareku.ui.theme.color.PaletteStyle
 import kotlinx.coroutines.launch
 
@@ -33,10 +34,10 @@ fun AppearanceScreen(onBack: () -> Unit) {
     val styles = PaletteStyle.entries.toList()
 
     val dynamicColor by prefs.dynamicColor.collectAsState(initial = true)
+    val themeModeName by prefs.themeMode.collectAsState(initial = "SYSTEM")
     val paletteOrdinal by prefs.paletteStyleOrdinal.collectAsState(initial = 0)
     val currentStyle = PaletteStyle.entries.getOrElse(paletteOrdinal) { PaletteStyle.TONAL_SPOT }
     var selectedStyle by remember { mutableStateOf(currentStyle) }
-    // Sync selectedStyle when DataStore updates (e.g. from another Activity)
     LaunchedEffect(currentStyle) { selectedStyle = currentStyle }
 
     Scaffold(
@@ -59,21 +60,61 @@ fun AppearanceScreen(onBack: () -> Unit) {
         }
     ) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            // ── 动态取色 ──
+            // ═══ 深色模式 ═══
             item {
-                Text(
-                    text = "莫奈取色",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
-                )
+                Text("深色模式", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+                Text("选择浅色、深色或跟随系统", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+            }
+
+            val currentMode = ThemeMode.fromName(themeModeName)
+            data class ModeEntry(val mode: ThemeMode, val label: String, val icon: @Composable () -> Unit)
+
+            val modeEntries = listOf(
+                ModeEntry(ThemeMode.LIGHT, "浅色") { Icon(Icons.Default.WbSunny, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary) },
+                ModeEntry(ThemeMode.DARK, "深色") { Icon(Icons.Default.NightsStay, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary) },
+                ModeEntry(ThemeMode.SYSTEM, "跟随系统") { Icon(Icons.Default.Settings, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary) },
+            )
+
+            modeEntries.forEachIndexed { i, entry ->
+                val selected = currentMode == entry.mode
+                val isSingle = modeEntries.size == 1
+                item {
+                    CustomCard(
+                        cornerRadius = when { isSingle -> 24.dp; i == 0 -> 24.dp; i == modeEntries.lastIndex -> 24.dp; else -> 4.dp },
+                        colors = if (selected)
+                            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                        else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest, contentColor = MaterialTheme.colorScheme.onSurface),
+                        border = null,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                            scope.launch { prefs.setThemeMode(entry.mode.name) }
+                        }
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            entry.icon()
+                            Spacer(Modifier.width(16.dp))
+                            Text(entry.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            RadioButton(selected = selected, onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                                scope.launch { prefs.setThemeMode(entry.mode.name) }
+                            })
+                        }
+                    }
+                }
+            }
+
+            // ═══ 莫奈取色 ═══
+            item { Spacer(Modifier.height(16.dp)) }
+            item {
+                Text("莫奈取色", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
                 Text(
                     text = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
                         "从壁纸自动提取主题颜色" else "系统版本不支持 (需 Android 12+)",
@@ -82,13 +123,9 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
             }
-
             item {
                 CustomCard(
                     cornerRadius = 24.dp,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    ),
                     border = CardDefaults.outlinedCardBorder(),
                     onClick = {},
                     enableHaptic = false
@@ -97,7 +134,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 8.dp)
                     ) {
-                        Icon(Icons.Default.DynamicForm, null, Modifier.size(24.dp).padding(start = 8.dp),
+                        Icon(Icons.Default.Palette, null, Modifier.size(24.dp).padding(start = 8.dp),
                             tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(16.dp))
                         Column(Modifier.weight(1f)) {
@@ -121,7 +158,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
                 }
             }
 
-            // ── 配色方案 ──
+            // ═══ 配色方案 ═══
             item {
                 Spacer(Modifier.height(16.dp))
                 Text("配色方案", style = MaterialTheme.typography.titleMedium,

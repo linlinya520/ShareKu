@@ -31,15 +31,12 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.linjing.shareku.ui.theme.ShareKuAnimationSpecs
-import kotlin.math.roundToInt
 
 @Composable
 fun CustomCard(
@@ -63,13 +60,23 @@ fun CustomCard(
     onLongClick: () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-    val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
 
+    // ── 非点击态：零动画开销 ──
+    if (!clickable) {
+        val staticShape = remember(topStartCorner, topEndCorner, bottomStartCorner, bottomEndCorner) {
+            StaticCornerShape(topStartCorner, topEndCorner, bottomStartCorner, bottomEndCorner)
+        }
+        Card(modifier = modifier, colors = colors, elevation = elevation, border = border, shape = staticShape) {
+            content()
+        }
+        return
+    }
+
+    // ── 点击态：完整动画管线 ──
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val isHovered by interactionSource.collectIsHoveredAsState()
-
     val doCardInteractions = isPressed || isHovered
 
     val animatedTopStart by animateDpAsState(
@@ -89,82 +96,72 @@ fun CustomCard(
         animationSpec = ShareKuAnimationSpecs.springDp, label = "be"
     )
 
-    val animatedShape = remember {
+    val animatedShape = remember(animatedTopStart, animatedTopEnd, animatedBottomStart, animatedBottomEnd) {
         DynamicCornerShape(
-            topStart = { animatedTopStart },
-            topEnd = { animatedTopEnd },
-            bottomStart = { animatedBottomStart },
-            bottomEnd = { animatedBottomEnd }
+            topStart = animatedTopStart, topEnd = animatedTopEnd,
+            bottomStart = animatedBottomStart, bottomEnd = animatedBottomEnd
         )
     }
 
     val animatedScale by animateFloatAsState(
         targetValue = if (doCardInteractions) pressedScale else 1f,
-        animationSpec = ShareKuAnimationSpecs.springFloat,
-        label = "scale_anim"
+        animationSpec = ShareKuAnimationSpecs.springFloat, label = "scale"
     )
 
     Card(
         modifier = modifier
             .hoverable(interactionSource)
-            .graphicsLayer {
-                scaleX = animatedScale
-                scaleY = animatedScale
-            },
-        colors = colors,
-        elevation = elevation,
-        border = border,
-        shape = animatedShape
+            .graphicsLayer { scaleX = animatedScale; scaleY = animatedScale },
+        colors = colors, elevation = elevation, border = border, shape = animatedShape
     ) {
         Column(
             modifier = Modifier
                 .clip(animatedShape)
                 .combinedClickable(
-                    enabled = clickable,
-                    interactionSource = interactionSource,
-                    indication = null,
+                    enabled = true, interactionSource = interactionSource, indication = null,
                     onClick = {
-                        if (enableHaptic) haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onClick()
+                        if (enableHaptic) haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onClick()
                     },
                     onLongClick = {
-                        if (enableHaptic) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onLongClick()
+                        if (enableHaptic) haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick()
                     }
                 )
-                .indication(
-                    interactionSource = interactionSource,
-                    indication = ripple()
-                )
-        ) {
-            content()
+                .indication(interactionSource = interactionSource, indication = ripple())
+        ) { content() }
+    }
+}
+
+private class StaticCornerShape(
+    private val topStart: Dp, private val topEnd: Dp,
+    private val bottomStart: Dp, private val bottomEnd: Dp,
+) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        with(density) {
+            return Outline.Rounded(RoundRect(
+                rect = Rect(Offset.Zero, size),
+                topLeft = CornerRadius(topStart.toPx(), topStart.toPx()),
+                topRight = CornerRadius(topEnd.toPx(), topEnd.toPx()),
+                bottomRight = CornerRadius(bottomEnd.toPx(), bottomEnd.toPx()),
+                bottomLeft = CornerRadius(bottomStart.toPx(), bottomStart.toPx())
+            ))
         }
     }
 }
 
 private class DynamicCornerShape(
-    private val topStart: () -> Dp,
-    private val topEnd: () -> Dp,
-    private val bottomStart: () -> Dp,
-    private val bottomEnd: () -> Dp,
+    topStart: Dp, topEnd: Dp, bottomStart: Dp, bottomEnd: Dp,
 ) : Shape {
-    override fun createOutline(
-        size: Size,
-        layoutDirection: LayoutDirection,
-        density: Density
-    ): Outline {
-        val ts = with(density) { topStart().coerceIn(0.dp, 100.dp).toPx() }
-        val te = with(density) { topEnd().coerceIn(0.dp, 100.dp).toPx() }
-        val bs = with(density) { bottomStart().coerceIn(0.dp, 100.dp).toPx() }
-        val be = with(density) { bottomEnd().coerceIn(0.dp, 100.dp).toPx() }
-        return Outline.Rounded(
-            RoundRect(
+    private val ts = topStart; private val te = topEnd
+    private val bs = bottomStart; private val be = bottomEnd
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        with(density) {
+            return Outline.Rounded(RoundRect(
                 rect = Rect(Offset.Zero, size),
-                topLeft = CornerRadius(ts, ts),
-                topRight = CornerRadius(te, te),
-                bottomRight = CornerRadius(be, be),
-                bottomLeft = CornerRadius(bs, bs)
-            )
-        )
+                topLeft = CornerRadius(ts.toPx(), ts.toPx()),
+                topRight = CornerRadius(te.toPx(), te.toPx()),
+                bottomRight = CornerRadius(be.toPx(), be.toPx()),
+                bottomLeft = CornerRadius(bs.toPx(), bs.toPx())
+            ))
+        }
     }
 }

@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(onBack: () -> Unit) {
+fun AboutScreen(onBack: () -> Unit, onChangelog: () -> Unit = {}) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
@@ -92,9 +92,9 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             MaterialTheme.colorScheme.onTertiaryContainer) {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/linlinya520/ShareKu")))
                         }
-                    AboutChip(R.drawable.ic_version_chip, "v1.0.0", "当前版本",
+                    AboutChip(R.drawable.ic_version_chip, "v1.1.0", "当前版本",
                         MaterialTheme.colorScheme.secondaryContainer,
-                        MaterialTheme.colorScheme.onSecondaryContainer) {}
+                        MaterialTheme.colorScheme.onSecondaryContainer) { onChangelog() }
                     AboutChip(R.drawable.ic_license_chip, "GPL-3.0", "开源协议",
                         MaterialTheme.colorScheme.errorContainer,
                         MaterialTheme.colorScheme.onErrorContainer) {}

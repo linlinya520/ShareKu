@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.screen.AboutScreen
 import com.linjing.shareku.ui.screen.AppearanceScreen
+import com.linjing.shareku.ui.screen.ChangelogScreen
 import com.linjing.shareku.ui.screen.SettingsScreen
 import com.linjing.shareku.ui.theme.LocalShareTheme
 import com.linjing.shareku.ui.theme.ThemeMode
@@ -67,7 +68,14 @@ class SettingsActivity : ComponentActivity() {
                         when (current) {
                             "about" -> {
                                 BackHandler { page = "settings" }
-                                AboutScreen(onBack = { page = "settings" })
+                                AboutScreen(
+                                    onBack = { page = "settings" },
+                                    onChangelog = { page = "changelog" }
+                                )
+                            }
+                            "changelog" -> {
+                                BackHandler { page = "about" }
+                                ChangelogScreen(onBack = { page = "about" })
                             }
                             "appearance" -> {
                                 BackHandler { page = "settings" }
@@ -125,7 +133,8 @@ private fun SecurityPage(onBack: () -> Unit) {
 
             item { Text("身份验证", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)) }
             item {
-                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false) {
+                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(4.dp)) {
                         ListItem(
                             headlineContent = { Text("启用身份验证", style = MaterialTheme.typography.bodyLarge) },
@@ -154,7 +163,8 @@ private fun SecurityPage(onBack: () -> Unit) {
 
             item { Text("连接", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) }
             item {
-                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false) {
+                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     ListItem(
                         headlineContent = { Text("连接确认", style = MaterialTheme.typography.bodyLarge) },
                         supportingContent = { Text("新设备连接时需要手动批准", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },

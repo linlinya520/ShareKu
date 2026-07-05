@@ -1,8 +1,10 @@
 package com.linjing.shareku.service
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.ClipboardManager
 import android.net.Uri
@@ -80,13 +82,14 @@ class ServerForegroundService : Service() {
                 AppSingletons.setServerRunning(false)
                 stopSelf()
             }
-            // 批准某IP的连接请求
             ACTION_APPROVE -> {
                 val ip = intent.getStringExtra(EXTRA_CONFIRM_IP) ?: return START_NOT_STICKY
                 server?.let { s ->
                     s.pendingIps.remove(ip)
                     s.approvedIps.add(ip)
                 }
+                AppSingletons.dequeuePendingIp()
+                cancelConfirmNotification()
             }
             // 拒绝某IP的连接请求
             ACTION_DENY -> {
@@ -95,6 +98,8 @@ class ServerForegroundService : Service() {
                     s.pendingIps.remove(ip)
                     s.blockedIps.add(ip)
                 }
+                AppSingletons.dequeuePendingIp()
+                cancelConfirmNotification()
             }
         }
         return START_STICKY
@@ -193,7 +198,14 @@ class ServerForegroundService : Service() {
             .addAction(android.R.drawable.ic_input_add, "批准", approveIntent)
             .addAction(android.R.drawable.ic_delete, "拒绝", denyIntent)
             .build()
-        startForeground(NOTIFY_CONFIRM_ID, notify)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFY_CONFIRM_ID, notify)
+        AppSingletons.enqueuePendingIp(ip)
+    }
+
+    private fun cancelConfirmNotification() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(NOTIFY_CONFIRM_ID)
     }
 
     private fun createNotification(host: String, port: Int): Notification {

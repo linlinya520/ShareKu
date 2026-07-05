@@ -9,53 +9,36 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.content.FileProvider
-import com.linjing.shareku.server.NetworkInterfaceInfo
 import com.linjing.shareku.server.NetworkUtils
 import com.linjing.shareku.service.ServerForegroundService
 import com.linjing.shareku.ui.component.CustomCard
@@ -88,9 +71,9 @@ class ShareActivity : ComponentActivity() {
         val networkUtils = NetworkUtils()
         val iface = networkUtils.getPreferredInterface("auto")
         val ip = iface?.ipAddress ?: "127.0.0.1"
-        val port = if (AppSingletons.isServerRunning.value) 8081 else 8080
+        val port = runBlocking { AppSingletons.preferencesManager.port.first() }
         val url = "http://$ip:$port"
-        // 同步读取当前主题，避免DataStore异步加载导致的闪黑
+        // 同步读取当前主题
         val initialTheme = runBlocking { AppSingletons.preferencesManager.themeMode.first() }
         setContent {
             val themeModeName by AppSingletons.preferencesManager.themeMode.collectAsState(initial = initialTheme)
@@ -107,10 +90,10 @@ class ShareActivity : ComponentActivity() {
                         stopServiceIfRunning()
                         finish()
                     },
-                    onStartSharing = {
+                    onStartSharing = { p ->
                         startShareService(
                             ip = ip,
-                            port = port,
+                            port = p,
                             files = cacheFiles,
                             singleFileSandbox = isSandbox
                         )
@@ -210,17 +193,24 @@ fun ShareSheetDialog(
     ip: String,
     port: Int,
     onClose: () -> Unit,
-    onStartSharing: () -> Unit
+    onStartSharing: (Int) -> Unit
 ) {
+    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val isServerRunning by AppSingletons.isServerRunning.collectAsState()
     var showCopied by remember { mutableStateOf(false) }
-    var isSharing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isSharing) {
-        if (isSharing) {
-            onStartSharing()
-        }
+    // Port state — editable
+    var currentPort by remember { mutableIntStateOf(port) }
+    var showPortDialog by remember { mutableStateOf(false) }
+    var portInput by remember { mutableStateOf(port.toString()) }
+    val displayUrl = "http://$ip:$currentPort"
+
+    // Sync port when changed via dialog
+    LaunchedEffect(currentPort) {
+        AppSingletons.preferencesManager.setPort(currentPort)
     }
 
     Dialog(
@@ -249,19 +239,19 @@ fun ShareSheetDialog(
                         fontWeight = FontWeight.Bold
                     )
                     IconButton(onClick = onClose) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
+                        Icon(Icons.Default.Close, "关闭")
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // File list
-                if (files.size == 1) {
-                    CustomCard(
-                        modifier = Modifier.fillMaxWidth(), cornerRadius = 12.dp,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                        clickable = false, enableHaptic = false
-                    ) {
+                CustomCard(
+                    modifier = Modifier.fillMaxWidth(), cornerRadius = 12.dp,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    clickable = false, enableHaptic = false
+                ) {
+                    if (files.size == 1) {
                         Text(
                             text = files.first().name,
                             modifier = Modifier.padding(12.dp),
@@ -269,13 +259,7 @@ fun ShareSheetDialog(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
-                    }
-                } else {
-                    CustomCard(
-                        modifier = Modifier.fillMaxWidth(), cornerRadius = 12.dp,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                        clickable = false, enableHaptic = false
-                    ) {
+                    } else {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
                                 text = "已选择 ${files.size} 个文件",
@@ -302,76 +286,155 @@ fun ShareSheetDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // QR Code
+                // QR Code — only visible when server is running
                 AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn() + scaleIn()
+                    visible = isServerRunning,
+                    enter = scaleIn(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        initialScale = 0.6f
+                    ) + fadeIn(tween(300)),
+                    exit = scaleOut(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        targetScale = 0.6f
+                    ) + fadeOut(tween(200))
                 ) {
-                    QrCodeCard(
-                        url = url,
-                        modifier = Modifier.size(180.dp)
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        QrCodeCard(url = displayUrl, modifier = Modifier.size(180.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "扫码访问共享文件",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "扫码访问共享文件",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // URL display & copy
+                // URL display & copy + port
                 CustomCard(
                     modifier = Modifier.fillMaxWidth(), cornerRadius = 12.dp,
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     clickable = false, enableHaptic = false
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = url,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        IconButton(onClick = {
-                            clipboardManager.setText(AnnotatedString(url))
-                            showCopied = true
-                            scope.launch {
-                                kotlinx.coroutines.delay(2000)
-                                showCopied = false
-                            }
-                        }) {
-                            Icon(
-                                Icons.Default.ContentCopy,
-                                contentDescription = "复制",
-                                tint = if (showCopied) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    Column(Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = displayUrl,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
+                            IconButton(onClick = {
+                                clipboardManager.setText(AnnotatedString(displayUrl))
+                                showCopied = true
+                                scope.launch {
+                                    kotlinx.coroutines.delay(2000)
+                                    showCopied = false
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = "复制",
+                                    tint = if (showCopied) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        // Quick port change
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "端口: $currentPort",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = {
+                                portInput = currentPort.toString()
+                                showPortDialog = true
+                            }) {
+                                Text("修改", fontSize = MaterialTheme.typography.labelMedium.fontSize)
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Start sharing button
+                // Start/Stop sharing button
                 Button(
-                    onClick = { isSharing = true },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        if (isServerRunning) {
+                            // Stop
+                            val intent = Intent(context, ServerForegroundService::class.java).apply {
+                                action = ServerForegroundService.ACTION_STOP
+                            }
+                            context.startService(intent)
+                            AppSingletons.setServerRunning(false)
+                        } else {
+                            // Start
+                            onStartSharing(currentPort)
+                            AppSingletons.setServerRunning(true)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(26.dp)
+                    shape = RoundedCornerShape(26.dp),
+                    colors = if (isServerRunning) ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ) else ButtonDefaults.buttonColors()
                 ) {
-                    Text("启动共享", fontWeight = FontWeight.Bold)
+                    if (isServerRunning) {
+                        Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        if (isServerRunning) "停止共享" else "启动共享",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
+    }
+
+    // Port dialog
+    if (showPortDialog) {
+        AlertDialog(
+            onDismissRequest = { showPortDialog = false },
+            title = { Text("修改端口") },
+            text = {
+                OutlinedTextField(
+                    value = portInput, singleLine = true,
+                    onValueChange = { portInput = it },
+                    label = { Text("端口号") },
+                    placeholder = { Text("8080") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    portInput.toIntOrNull()?.let { p ->
+                        currentPort = p
+                    }
+                    showPortDialog = false
+                }) { Text("确认") }
+            },
+            dismissButton = { TextButton(onClick = { showPortDialog = false }) { Text("取消") } }
+        )
     }
 }
