@@ -147,48 +147,45 @@ function toggleClip(){
   ball.classList.add('show');
  }
 }
-// ── 悬浮球拖拽 ──
+// ── 悬浮球拖拽（5px死区，纯点击不触发移动）──
 (function(){
  var ball = document.getElementById('clipBall');
  if(!ball) return;
- var dragging = false, moved = false, sx, sy, sr, sb;
+ var dragging = false, hasMoved = false, sx = 0, sy = 0, startLeft = 0, startTop = 0;
+ function clamp(v, min, max){ return Math.max(min, Math.min(v, max)); }
  ball.addEventListener('mousedown', function(e){
-  dragging = true; moved = false; sx = e.clientX; sy = e.clientY;
+  dragging = true; hasMoved = false;
+  sx = e.clientX; sy = e.clientY;
   var r = ball.getBoundingClientRect();
-  sr = r.right; sb = r.bottom;
+  startLeft = r.left; startTop = r.top;
   ball.style.right = 'auto'; ball.style.bottom = 'auto';
-  ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
+  ball.style.left = startLeft + 'px'; ball.style.top = startTop + 'px';
  });
  ball.addEventListener('touchstart', function(e){
-  dragging = true; moved = false; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+  dragging = true; hasMoved = false;
+  sx = e.touches[0].clientX; sy = e.touches[0].clientY;
   var r = ball.getBoundingClientRect();
+  startLeft = r.left; startTop = r.top;
   ball.style.right = 'auto'; ball.style.bottom = 'auto';
-  ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
-  e.preventDefault();
+  ball.style.left = startLeft + 'px'; ball.style.top = startTop + 'px';
  });
- document.addEventListener('mousemove', function(e){
+ function onMove(cx, cy){
   if(!dragging) return;
-  e.preventDefault();
-  var nx = sr - sx + e.clientX - ball.offsetWidth;
-  var ny = sb - sy + e.clientY - ball.offsetHeight;
-  if(Math.abs(nx - parseFloat(ball.style.left)) > 2 || Math.abs(ny - parseFloat(ball.style.top)) > 2) moved = true;
-  nx = Math.max(8, Math.min(nx, window.innerWidth - ball.offsetWidth - 8));
-  ny = Math.max(60, Math.min(ny, window.innerHeight - ball.offsetHeight - 70));
-  ball.style.left = nx + 'px'; ball.style.top = ny + 'px';
- });
- document.addEventListener('touchmove', function(e){
+  if(!hasMoved && (Math.abs(cx - sx) > 5 || Math.abs(cy - sy) > 5)) hasMoved = true;
+  if(!hasMoved) return;
+  var nx = startLeft + cx - sx, ny = startTop + cy - sy;
+  ball.style.left = clamp(nx, 8, window.innerWidth - ball.offsetWidth - 8) + 'px';
+  ball.style.top = clamp(ny, 60, window.innerHeight - ball.offsetHeight - 70) + 'px';
+ }
+ document.addEventListener('mousemove', function(e){ onMove(e.clientX, e.clientY); });
+ document.addEventListener('touchmove', function(e){ onMove(e.touches[0].clientX, e.touches[0].clientY); });
+ function onUp(){
   if(!dragging) return;
-  moved = true;
-  var nx = e.touches[0].clientX - ball.offsetWidth/2;
-  var ny = e.touches[0].clientY - ball.offsetHeight/2;
-  nx = Math.max(8, Math.min(nx, window.innerWidth - ball.offsetWidth - 8));
-  ny = Math.max(60, Math.min(ny, window.innerHeight - ball.offsetHeight - 70));
-  ball.style.left = nx + 'px'; ball.style.top = ny + 'px';
- });
- document.addEventListener('mouseup', function(){ dragging = false; });
- document.addEventListener('touchend', function(){ dragging = false; });
- // 阻止拖拽后触发click展开
- ball.addEventListener('click', function(e){ if(moved) e.stopPropagation(); });
+  if(!hasMoved) toggleClip();
+  dragging = false; hasMoved = false;
+ }
+ document.addEventListener('mouseup', onUp);
+ document.addEventListener('touchend', onUp);
 })();
 window.addEventListener('popstate',function(e){if(e.state&&e.state.p!==undefined&&e.state.p!==currentPath)load(e.state.p)});
 // 初始加载：从URL hash恢复路径
