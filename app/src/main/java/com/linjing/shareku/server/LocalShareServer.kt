@@ -524,6 +524,8 @@ p{font-size:14px;color:#636e72;line-height:1.5}
         when {
             method == "OPTIONS" -> {
                 call.response.headers.append("Allow", "GET, PUT, DELETE, OPTIONS, PROPFIND, MKCOL, COPY, MOVE, HEAD")
+                call.response.headers.append("DAV", "1,2")
+                call.response.headers.append("MS-Author-Via", "DAV")
                 call.respondText("")
             }
             method == "HEAD" -> {
@@ -554,16 +556,16 @@ p{font-size:14px;color:#636e72;line-height:1.5}
                 sb.append("""<D:multistatus xmlns:D="DAV:">""")
                 val path = call.request.uri.removePrefix("/webdav")
                 val file = resolveWebDavPath(path)
+                val depth = call.request.header("Depth") ?: "infinity"
                 if (file != null && file.exists()) {
-                    sb.append("""<D:response><D:href>/webdav${path}</D:href>""")
-                    sb.append("<D:propstat><D:prop>")
-                    if (file.isDirectory) {
-                        sb.append("<D:resourcetype><D:collection/></D:resourcetype>")
+                    appendPropfindResponse(sb, file, path)
+                    // Depth 1: also list immediate children of directories
+                    if (file.isDirectory && (depth == "1" || depth == "infinity")) {
+                        file.listFiles()?.forEach { child ->
+                            val childPath = if (path.endsWith("/")) "$path${child.name}" else "$path/${child.name}"
+                            appendPropfindResponse(sb, child, childPath)
+                        }
                     }
-                    sb.append("<D:getcontentlength>${file.length()}</D:getcontentlength>")
-                    sb.append("<D:getlastmodified>${java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US).format(java.util.Date(file.lastModified()))}</D:getlastmodified>")
-                    sb.append("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>")
-                    sb.append("</D:response>")
                 }
                 sb.append("</D:multistatus>")
                 logRequest(call, 207)
@@ -641,6 +643,19 @@ p{font-size:14px;color:#636e72;line-height:1.5}
             FileInputStream(file).use { it.copyTo(zos, 65536) }
             zos.closeEntry()
         }
+    }
+
+    private fun appendPropfindResponse(sb: StringBuilder, file: File, path: String) {
+        val href = "/webdav${if (path.startsWith("/")) path else "/$path"}"
+        sb.append("<D:response><D:href>$href</D:href>")
+        sb.append("<D:propstat><D:prop>")
+        if (file.isDirectory) {
+            sb.append("<D:resourcetype><D:collection/></D:resourcetype>")
+        }
+        sb.append("<D:getcontentlength>${file.length()}</D:getcontentlength>")
+        sb.append("<D:getlastmodified>${java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US).format(java.util.Date(file.lastModified()))}</D:getlastmodified>")
+        sb.append("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>")
+        sb.append("</D:response>")
     }
 
     private fun guessContentType(file: File): ContentType {

@@ -116,6 +116,17 @@ async function doUpload(){
 }
 function sendClip(){var v=document.getElementById('clipIn').value.trim();if(!v||!ws||ws.readyState!==1)return;ws.send('clipboard:'+v);document.getElementById('clipIn').value='';showToast('已发送')}
 function getClip(){if(ws&&ws.readyState===1)ws.send('get_clipboard')}
+function downloadMapBat(){
+ var webdavUrl = location.protocol + '//' + location.host + '/webdav';
+ var script = '@echo off\r\nchcp 65001 >nul\r\necho 正在将 ShareKu 映射为 Z: 盘...\r\necho.\r\n:: 1. 启动 Windows WebDAV 客户端服务\r\nnet start WebClient >nul 2>&1\r\n:: 2. 允许 HTTP 访问 WebDAV\r\nreg add \"HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters\" /v BasicAuthLevel /t REG_DWORD /d 2 /f >nul 2>&1\r\n:: 3. 清除旧映射\r\nnet use Z: /delete >nul 2>&1\r\n:: 4. 映射网络驱动器\r\nnet use Z: ' + webdavUrl + ' /persistent:no\r\nif %errorlevel%==0 (\r\n echo 成功映射 Z: 盘\r\n explorer Z:\r\n) else (\r\n echo 映射失败\r\n echo 请以管理员身份运行并检查防火墙\r\n)\r\npause\r\n';
+ var blob = new Blob([script], {type: 'application/bat'});
+ var a = document.createElement('a');
+ a.href = URL.createObjectURL(blob);
+ a.download = 'ShareKu-MapZ.bat';
+ a.click();
+ setTimeout(function(){URL.revokeObjectURL(a.href)}, 5000);
+ showToast('映射脚本已下载');
+}
 function showToast(msg){t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
 window.addEventListener('popstate',function(e){if(e.state&&e.state.p!==undefined&&e.state.p!==currentPath)load(e.state.p)});
 // 初始加载：从URL hash恢复路径
