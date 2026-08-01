@@ -12,15 +12,20 @@
  <button class="btn btn-cyan" onclick="downloadSelected()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>下载 ZIP</button>
  <button class="btn btn-danger" id="deleteBtn" onclick="deleteSelected()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>删除</button>
   <button class="btn btn-ghost" onclick="clearSelection()">取消</button>
-</div>
-<div class="clip">
- <span class="clipicon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></span>
+<div class="clip" id="clipPanel">
+ <div class="clip-hdr">
+  <span class="clipicon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></span>
+  <button class="clip-close" onclick="toggleClip()" title="收起">✕</button>
+ </div>
  <textarea id="clipIn" rows="3" placeholder="发送文字到手机…"></textarea>
  <div class="clip-row">
   <button class="btn-mini" onclick="sendClip()">发送</button>
   <button class="btn-mini" onclick="getClip()">拉取</button>
  </div>
  <button class="btn-mini map-btn" onclick="downloadMapBat()">📥 下载映射脚本</button>
+</div>
+<div class="clip-ball" id="clipBall" onclick="toggleClip()">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
 </div>
 <div class="toast" id="toast"></div>
 <script src="/assets/script.js"></script>

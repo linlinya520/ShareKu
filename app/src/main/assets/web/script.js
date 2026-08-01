@@ -130,6 +130,63 @@ function downloadMapBat(){
  showToast('映射脚本已下载');
 }
 function showToast(msg){t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
+// ── 剪贴板面板 ↔ 悬浮球 ──
+function toggleClip(){
+ var panel = document.getElementById('clipPanel');
+ var ball = document.getElementById('clipBall');
+ if(panel.classList.contains('collapsed')){
+  // 展开：确保面板在屏幕范围内
+  panel.classList.remove('collapsed');
+  ball.classList.remove('show');
+  var rect = panel.getBoundingClientRect();
+  if(rect.right > window.innerWidth) panel.style.right = '8px';
+  if(rect.bottom > window.innerHeight - 70) panel.style.bottom = '92px';
+ } else {
+  // 收起
+  panel.classList.add('collapsed');
+  ball.classList.add('show');
+ }
+}
+// ── 悬浮球拖拽 ──
+(function(){
+ var ball = document.getElementById('clipBall');
+ if(!ball) return;
+ var dragging = false, sx, sy, sr, sb;
+ ball.addEventListener('mousedown', function(e){
+  dragging = true; sx = e.clientX; sy = e.clientY;
+  var r = ball.getBoundingClientRect();
+  sr = r.right; sb = r.bottom;
+  ball.style.right = 'auto'; ball.style.bottom = 'auto';
+  ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
+  e.preventDefault();
+ });
+ ball.addEventListener('touchstart', function(e){
+  dragging = true; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+  var r = ball.getBoundingClientRect();
+  ball.style.right = 'auto'; ball.style.bottom = 'auto';
+  ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
+  e.preventDefault();
+ });
+ document.addEventListener('mousemove', function(e){
+  if(!dragging) return;
+  var nx = sr - sx + e.clientX - ball.offsetWidth;
+  var ny = sb - sy + e.clientY - ball.offsetHeight;
+  // 约束在屏幕内
+  nx = Math.max(8, Math.min(nx, window.innerWidth - ball.offsetWidth - 8));
+  ny = Math.max(60, Math.min(ny, window.innerHeight - ball.offsetHeight - 70));
+  ball.style.left = nx + 'px'; ball.style.top = ny + 'px';
+ });
+ document.addEventListener('touchmove', function(e){
+  if(!dragging) return;
+  var nx = e.touches[0].clientX - ball.offsetWidth/2;
+  var ny = e.touches[0].clientY - ball.offsetHeight/2;
+  nx = Math.max(8, Math.min(nx, window.innerWidth - ball.offsetWidth - 8));
+  ny = Math.max(60, Math.min(ny, window.innerHeight - ball.offsetHeight - 70));
+  ball.style.left = nx + 'px'; ball.style.top = ny + 'px';
+ });
+ document.addEventListener('mouseup', function(){ dragging = false; });
+ document.addEventListener('touchend', function(){ dragging = false; });
+})();
 window.addEventListener('popstate',function(e){if(e.state&&e.state.p!==undefined&&e.state.p!==currentPath)load(e.state.p)});
 // 初始加载：从URL hash恢复路径
 (function(){var h=location.hash.slice(1);if(h){currentPath='';load(decodeURIComponent(h))}})();

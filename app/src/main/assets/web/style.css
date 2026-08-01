@@ -50,8 +50,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .upload-bar .btn-up:hover{background:var(--cyan);color:#fff}
 .upload-bar .btn-up input{display:none}
 .upload-bar .btn-up svg{width:18px;height:18px}
-.clip{position:fixed;bottom:92px;right:20px;background:var(--card);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px;z-index:999;box-shadow:0 4px 24px rgba(0,0,0,.15);border:1px solid var(--border);width:260px}
-.clip .clipicon svg{width:20px;height:20px;color:var(--gold);flex-shrink:0}
+.clip{position:fixed;bottom:92px;right:20px;background:var(--card);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px;z-index:999;box-shadow:0 4px 24px rgba(0,0,0,.15);border:1px solid var(--border);width:260px;transition:opacity .2s,transform .2s}
+.clip.collapsed{opacity:0;transform:scale(.8);pointer-events:none}
+.clip-hdr{display:flex;align-items:center;justify-content:space-between}
+.clip-hdr .clipicon svg{width:20px;height:20px;color:var(--gold);flex-shrink:0}
+.clip-close{background:transparent;border:none;color:var(--text2);font-size:16px;cursor:pointer;padding:0 2px;line-height:1;border-radius:4px}
+.clip-close:hover{color:var(--text);background:var(--bg)}
 .clip .clip-row{display:flex;gap:8px;align-items:center}
 .clip textarea{background:transparent;border:none;color:var(--text);font-family:inherit;font-size:13px;outline:none;width:100%;height:48px;resize:none;line-height:1.4;padding:4px 0;box-sizing:border-box}
 .clip textarea::placeholder{color:var(--text2);opacity:.6}
@@ -61,6 +65,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .clip .btn-mini:hover{background:var(--goldD)}
 .clip .btn-mini.map-btn{background:var(--cyan);flex:1;text-align:center}
 .clip .btn-mini.map-btn:hover{background:var(--cyanD)}
+.clip-ball{display:none;position:fixed;bottom:100px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--card);box-shadow:0 4px 16px rgba(0,0,0,.18);border:1px solid var(--border);z-index:1000;cursor:pointer;align-items:center;justify-content:center;transition:transform .15s;user-select:none}
+.clip-ball.show{display:flex}
+.clip-ball:hover{transform:scale(1.1)}
+.clip-ball:active{transform:scale(.95)}
+.clip-ball svg{width:22px;height:22px;color:var(--gold)}
 .toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 24px;border-radius:20px;font-size:13px;font-weight:500;z-index:100;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
 @media(max-width:600px){.grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;padding:12px 12px 100px}.topbar{padding:12px 16px}.topbar h1{font-size:16px}.breadcrumb{font-size:12px}.clip{bottom:80px;right:8px}.actions{bottom:16px}}
