@@ -44,10 +44,10 @@ function connectWS(){
   ws.onclose=function(){setTimeout(connectWS,3000)};
  }catch(x){}
 }
-async function load(path){
- if(path===undefined)path=currentPath;
- if(path!==currentPath){history.pushState({p:path},'',(path?'#'+path:'#'));}
- currentPath=path;
+async function load(path, pushHistory){
+  if(path===undefined)path=currentPath;
+  if(pushHistory !== false && path!==currentPath){history.pushState({p:path},'',(path?'#'+path:'#'));}
+  currentPath=path;
  var parts=path?path.split('/').filter(Boolean):[];
  var h='<a onclick="load(\'\')">根目录</a>',cur='';
  for(var i=0;i<parts.length;i++){cur+=(cur?'/':'')+parts[i];h+=' <span>/</span> <a onclick="load(\''+cur.replace(/'/g,"\\'")+'\')">'+parts[i]+'</a>';}
@@ -179,15 +179,15 @@ function toggleClip(){
  }
  document.addEventListener('mousemove', function(e){ onMove(e.clientX, e.clientY); });
  document.addEventListener('touchmove', function(e){ onMove(e.touches[0].clientX, e.touches[0].clientY); });
- function onUp(){
+ function onUp(e){
   if(!dragging) return;
-  if(!hasMoved) toggleClip();
+  if(!hasMoved){ toggleClip(); e.stopPropagation(); e.preventDefault(); }
   dragging = false; hasMoved = false;
  }
  document.addEventListener('mouseup', onUp);
  document.addEventListener('touchend', onUp);
 })();
-window.addEventListener('popstate',function(e){if(e.state&&e.state.p!==undefined&&e.state.p!==currentPath)load(e.state.p)});
+window.addEventListener('popstate',function(e){if(e.state&&e.state.p!==undefined&&e.state.p!==currentPath)load(e.state.p, false)});
 // 初始加载：从URL hash恢复路径
 (function(){var h=location.hash.slice(1);if(h){currentPath='';load(decodeURIComponent(h))}})();
 document.addEventListener('keydown',function(e){if(e.key==='Escape')clearSelection()});
