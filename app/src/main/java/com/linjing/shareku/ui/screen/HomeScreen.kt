@@ -475,9 +475,15 @@ fun HomeScreen(
                                         scope.launch { delay(2000); showCopied = false }
                                     }) { Text(if (showCopied) "已复制！" else "复制链接") }
                                     Button(onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                        generateWindowsMapScript(url, clipboardManager)
-                                    }) { Text("映射 Z: 盘") }
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    generateWindowsMapScript(
+                                        url = url,
+                                        authEnabled = enableAuth,
+                                        authUser = authUsername,
+                                        authPass = authPassword,
+                                        clipboardManager = clipboardManager
+                                    )
+                                }) { Text("映射 Z: 盘") }
                                 }
                             }
                         } else {
@@ -622,17 +628,45 @@ fun HomeScreen(
     }
 }
 
-private fun generateWindowsMapScript(url: String, clipboardManager: androidx.compose.ui.platform.ClipboardManager) {
+private fun generateWindowsMapScript(
+    url: String,
+    authEnabled: Boolean,
+    authUser: String,
+    authPass: String,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager
+) {
     val webdavUrl = "$url/webdav"
+    val authLine = if (authEnabled) "/user:$authUser $authPass" else ""
     val script = """
 @echo off
+chcp 65001 >nul
 echo 正在将 ShareKu 映射为 Z: 盘...
-net use Z: $webdavUrl /persistent:no
+echo.
+
+:: 1. 启动 Windows WebDAV 客户端服务（需管理员权限）
+net start WebClient >nul 2>&1
+
+:: 2. 允许通过 HTTP 访问 WebDAV（Windows 默认只允许 HTTPS）
+reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" /v BasicAuthLevel /t REG_DWORD /d 2 /f >nul 2>&1
+
+:: 3. 清除可能存在的旧映射
+net use Z: /delete >nul 2>&1
+
+:: 4. 映射网络驱动器
+net use Z: $webdavUrl /persistent:no $authLine
+
 if %errorlevel%==0 (
+    echo.
     echo 成功映射 Z: 盘
     explorer Z:
 ) else (
-    echo 映射失败。请确认 ShareKu 正在运行且 WebDAV 已启用。
+    echo.
+    echo 映射失败，错误码 %errorlevel%
+    echo 请检查：
+    echo   1. 手机与电脑在同一局域网
+    echo   2. ShareKu 服务器正在运行且 WebDAV 已启用
+    echo   3. 以管理员身份运行本脚本（WebClient 服务需要权限）
+    echo   4. 若已启用身份验证，请确认用户名和密码正确
 )
 pause
     """.trimIndent()
