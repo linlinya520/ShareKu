@@ -151,9 +151,9 @@ function toggleClip(){
 (function(){
  var ball = document.getElementById('clipBall');
  if(!ball) return;
- var dragging = false, sx, sy, sr, sb;
+ var dragging = false, moved = false, sx, sy, sr, sb;
  ball.addEventListener('mousedown', function(e){
-  dragging = true; sx = e.clientX; sy = e.clientY;
+  dragging = true; moved = false; sx = e.clientX; sy = e.clientY;
   var r = ball.getBoundingClientRect();
   sr = r.right; sb = r.bottom;
   ball.style.right = 'auto'; ball.style.bottom = 'auto';
@@ -161,7 +161,7 @@ function toggleClip(){
   e.preventDefault();
  });
  ball.addEventListener('touchstart', function(e){
-  dragging = true; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+  dragging = true; moved = false; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
   var r = ball.getBoundingClientRect();
   ball.style.right = 'auto'; ball.style.bottom = 'auto';
   ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
@@ -171,13 +171,14 @@ function toggleClip(){
   if(!dragging) return;
   var nx = sr - sx + e.clientX - ball.offsetWidth;
   var ny = sb - sy + e.clientY - ball.offsetHeight;
-  // 约束在屏幕内
+  if(Math.abs(nx - parseFloat(ball.style.left)) > 2 || Math.abs(ny - parseFloat(ball.style.top)) > 2) moved = true;
   nx = Math.max(8, Math.min(nx, window.innerWidth - ball.offsetWidth - 8));
   ny = Math.max(60, Math.min(ny, window.innerHeight - ball.offsetHeight - 70));
   ball.style.left = nx + 'px'; ball.style.top = ny + 'px';
  });
  document.addEventListener('touchmove', function(e){
   if(!dragging) return;
+  moved = true;
   var nx = e.touches[0].clientX - ball.offsetWidth/2;
   var ny = e.touches[0].clientY - ball.offsetHeight/2;
   nx = Math.max(8, Math.min(nx, window.innerWidth - ball.offsetWidth - 8));
@@ -186,6 +187,8 @@ function toggleClip(){
  });
  document.addEventListener('mouseup', function(){ dragging = false; });
  document.addEventListener('touchend', function(){ dragging = false; });
+ // 阻止拖拽后触发click展开
+ ball.addEventListener('click', function(e){ if(moved) e.stopPropagation(); });
 })();
 window.addEventListener('popstate',function(e){if(e.state&&e.state.p!==undefined&&e.state.p!==currentPath)load(e.state.p)});
 // 初始加载：从URL hash恢复路径
