@@ -28,6 +28,16 @@ fun ChangelogScreen(onBack: () -> Unit) {
 
     val changelogs = remember {
         listOf(
+            ChangelogEntry("v1.1.1", "2026-07", listOf(
+                "剪贴板面板重构: 可收起为悬浮球, 拖拽移动, 5px死区防误触",
+                "修复悬浮球点击穿透到后方文件卡片",
+                "修复浏览器返回键退出网站 (history.pushState重复写入)",
+                "映射 Z 盘脚本修复: UNC 格式, 去掉 DavWWWRoot, 重启 WebClient",
+                "WebDAV PROPFIND 支持 Depth:1, Windows 资源管理器可浏览文件列表",
+                "OPTIONS 响应添加 DAV 头, 正确标识 WebDAV 服务",
+                "剪贴板 textarea 支持多行文本, 拉取批处理脚本不再揉成一行",
+                "网页端新增一键下载映射脚本按钮 (动态IP端口)",
+            )),
             ChangelogEntry("v1.1.0", "2026-07", listOf(
                 "✨ 动画全面优化：二维码弹性展开/收起、按钮震动反馈、卡片长按缩放回弹",
                 "⚡ 性能大幅提升：非交互卡片跳过动画管线，减少60%组合开销",
