@@ -158,7 +158,6 @@ function toggleClip(){
   sr = r.right; sb = r.bottom;
   ball.style.right = 'auto'; ball.style.bottom = 'auto';
   ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
-  e.preventDefault();
  });
  ball.addEventListener('touchstart', function(e){
   dragging = true; moved = false; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
@@ -169,6 +168,7 @@ function toggleClip(){
  });
  document.addEventListener('mousemove', function(e){
   if(!dragging) return;
+  e.preventDefault();
   var nx = sr - sx + e.clientX - ball.offsetWidth;
   var ny = sb - sy + e.clientY - ball.offsetHeight;
   if(Math.abs(nx - parseFloat(ball.style.left)) > 2 || Math.abs(ny - parseFloat(ball.style.top)) > 2) moved = true;

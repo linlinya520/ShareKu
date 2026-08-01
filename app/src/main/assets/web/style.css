@@ -65,7 +65,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .clip .btn-mini:hover{background:var(--goldD)}
 .clip .btn-mini.map-btn{background:var(--cyan);flex:1;text-align:center}
 .clip .btn-mini.map-btn:hover{background:var(--cyanD)}
-.clip-ball{display:none;position:fixed;bottom:100px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--card);box-shadow:0 4px 16px rgba(0,0,0,.18);border:1px solid var(--border);z-index:1000;cursor:pointer;align-items:center;justify-content:center;transition:transform .15s;user-select:none}
+.clip-ball{display:none;position:fixed;bottom:100px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--card);box-shadow:0 4px 16px rgba(0,0,0,.18);border:1px solid var(--border);z-index:1000;cursor:pointer;align-items:center;justify-content:center;transition:transform .15s;user-select:none;touch-action:none}
 .clip-ball.show{display:flex}
 .clip-ball:hover{transform:scale(1.1)}
 .clip-ball:active{transform:scale(.95)}
