@@ -635,7 +635,10 @@ private fun generateWindowsMapScript(
     authPass: String,
     clipboardManager: androidx.compose.ui.platform.ClipboardManager
 ) {
-    val webdavUrl = "$url/webdav"
+    val uri = java.net.URI(url)
+    val ip = uri.host ?: "127.0.0.1"
+    val port = uri.port
+    val uncPath = "\\\\$ip@$port\\webdav"
     val authLine = if (authEnabled) "/user:$authUser $authPass" else ""
     val script = """
 @echo off
@@ -643,30 +646,31 @@ chcp 65001 >nul
 echo 正在将 ShareKu 映射为 Z: 盘...
 echo.
 
-:: 1. 启动 Windows WebDAV 客户端服务（需管理员权限）
+:: 1. 启动 WebClient 服务（需要管理员权限）
 net start WebClient >nul 2>&1
 
-:: 2. 允许通过 HTTP 访问 WebDAV（Windows 默认只允许 HTTPS）
+:: 2. 允许 HTTP 基本认证（非 HTTPS 必须）
 reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" /v BasicAuthLevel /t REG_DWORD /d 2 /f >nul 2>&1
 
-:: 3. 清除可能存在的旧映射
+:: 3. 重启 WebClient 使注册表生效
+net stop WebClient >nul 2>&1
+net start WebClient >nul 2>&1
+
+:: 4. 清除旧映射
 net use Z: /delete >nul 2>&1
 
-:: 4. 映射网络驱动器
-net use Z: $webdavUrl /persistent:no $authLine
+:: 5. 映射驱动器（UNC 格式，去掉 DavWWWRoot——仅 IIS 需要）
+net use Z: $uncPath /persistent:no $authLine
 
 if %errorlevel%==0 (
     echo.
-    echo 成功映射 Z: 盘
+    echo [成功] 已映射 Z: 盘
     explorer Z:
 ) else (
     echo.
-    echo 映射失败，错误码 %errorlevel%
-    echo 请检查：
-    echo   1. 手机与电脑在同一局域网
-    echo   2. ShareKu 服务器正在运行且 WebDAV 已启用
-    echo   3. 以管理员身份运行本脚本（WebClient 服务需要权限）
-    echo   4. 若已启用身份验证，请确认用户名和密码正确
+    echo [失败] UNC 映射报错，尝试备用方案：直接用资源管理器打开
+    echo.
+    start http://$ip:$port/webdav
 )
 pause
     """.trimIndent()

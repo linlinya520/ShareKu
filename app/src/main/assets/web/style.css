@@ -50,7 +50,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .upload-bar .btn-up:hover{background:var(--cyan);color:#fff}
 .upload-bar .btn-up input{display:none}
 .upload-bar .btn-up svg{width:18px;height:18px}
-.clip{position:fixed;bottom:92px;right:20px;background:var(--card);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px;z-index:30;box-shadow:0 2px 12px rgba(0,0,0,.08);border:1px solid var(--border);width:260px}
+.clip{position:fixed;bottom:92px;right:20px;background:var(--card);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px;z-index:999;box-shadow:0 4px 24px rgba(0,0,0,.15);border:1px solid var(--border);width:260px}
 .clip .clipicon svg{width:20px;height:20px;color:var(--gold);flex-shrink:0}
 .clip .clip-row{display:flex;gap:8px;align-items:center}
 .clip textarea{background:transparent;border:none;color:var(--text);font-family:inherit;font-size:13px;outline:none;width:100%;height:48px;resize:none;line-height:1.4;padding:4px 0;box-sizing:border-box}
