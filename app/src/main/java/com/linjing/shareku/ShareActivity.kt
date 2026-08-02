@@ -56,6 +56,7 @@ class ShareActivity : ComponentActivity() {
 
     private var receivedFiles = mutableListOf<File>()
     private var isSandbox = false
+    private var serviceStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,9 +89,11 @@ class ShareActivity : ComponentActivity() {
                     port = port,
                     onClose = {
                         stopServiceIfRunning()
+                        cleanupCache()
                         finish()
                     },
                     onStartSharing = { p ->
+                        serviceStarted = true
                         startShareService(
                             ip = ip,
                             port = p,
@@ -182,7 +185,18 @@ class ShareActivity : ComponentActivity() {
         val intent = Intent(this, ServerForegroundService::class.java).apply {
             action = ServerForegroundService.ACTION_STOP
         }
-        startService(intent) // Will stop the service via its onStartCommand
+        startService(intent)
+    }
+
+    private fun cleanupCache() {
+        receivedFiles.forEach { it.delete() }
+        receivedFiles.clear()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // 安全网: 如果服务没启动就关闭了Activity, 清理残留缓存
+        if (!serviceStarted) cleanupCache()
     }
 }
 
