@@ -43,6 +43,7 @@ import com.linjing.shareku.service.ServerForegroundService
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.component.FileBrowserDialog
 import com.linjing.shareku.ui.component.QrCodeCard
+import com.linjing.shareku.ui.theme.ShareKuAnimationSpecs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
@@ -419,39 +420,33 @@ fun HomeScreen(
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AnimatedContent(
+AnimatedContent(
                         targetState = isServerRunning,
                         transitionSpec = {
                             if (targetState) {
                                 (slideInVertically(
                                     initialOffsetY = { fullHeight -> fullHeight },
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessLow
-                                    )
-                                ) + fadeIn(tween(300))) togetherWith
+                                    animationSpec = ShareKuAnimationSpecs.springExpandOffset
+                                ) + fadeIn(ShareKuAnimationSpecs.fadeInSlow)) togetherWith
                                         (slideOutVertically(
                                             targetOffsetY = { fullHeight -> -fullHeight },
                                             animationSpec = spring(
                                                 dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessMedium
+                                                stiffness = 500f
                                             )
-                                        ) + fadeOut(tween(200)))
+                                        ) + fadeOut(ShareKuAnimationSpecs.fadeOutFast))
                             } else {
                                 (slideInVertically(
                                     initialOffsetY = { fullHeight -> -fullHeight },
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessLow
-                                    )
-                                ) + fadeIn(tween(300))) togetherWith
+                                    animationSpec = ShareKuAnimationSpecs.springExpandOffset
+                                ) + fadeIn(ShareKuAnimationSpecs.fadeInSlow)) togetherWith
                                         (slideOutVertically(
                                             targetOffsetY = { fullHeight -> fullHeight },
                                             animationSpec = spring(
                                                 dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessMedium
+                                                stiffness = 500f
                                             )
-                                        ) + fadeOut(tween(200)))
+                                        ) + fadeOut(ShareKuAnimationSpecs.fadeOutFast))
                             }
                         },
                         label = "serverState"
