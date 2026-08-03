@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -52,16 +53,19 @@ class SettingsActivity : ComponentActivity() {
 
             LocalShareTheme(themeMode = ThemeMode.fromName(themeModeName), dynamicColor = dynamicColor, paletteStyle = paletteStyle) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AnimatedContent(
+AnimatedContent(
                         targetState = page,
                         transitionSpec = {
-                            if (targetState != "settings") {
-                                (slideInHorizontally { it } + fadeIn()) togetherWith
-                                        (slideOutHorizontally { -it / 3 } + fadeOut())
-                            } else {
-                                (slideInHorizontally { -it } + fadeIn()) togetherWith
-                                        (slideOutHorizontally { it / 3 } + fadeOut())
-                            }
+                            // 方向中性动画：无论左滑右滑，视觉一致
+                            // 进入：从92%缩放淡入  退出：缩放到108%淡出
+                            (fadeIn(tween(250)) + scaleIn(
+                                initialScale = 0.92f,
+                                animationSpec = tween(250)
+                            )) togetherWith
+                                    (fadeOut(tween(200)) + scaleOut(
+                                        targetScale = 1.05f,
+                                        animationSpec = tween(200)
+                                    ))
                         },
                         label = "settings_nav"
                     ) { current ->
