@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.linjing.shareku.AppSingletons
+import com.linjing.shareku.CacheUtils
 import com.linjing.shareku.SettingsActivity
 import com.linjing.shareku.server.NetworkUtils
 import com.linjing.shareku.service.ServerForegroundService
@@ -576,6 +577,60 @@ AnimatedContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
+                }
+            }
+
+            // ── 缓存清理横条 ──
+            Spacer(modifier = Modifier.height(12.dp))
+            var cacheSizeBytes by remember { mutableLongStateOf(0L) }
+            var showCleanedToast by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                cacheSizeBytes = CacheUtils.getCacheSize(context)
+            }
+            CustomCard(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    scope.launch {
+                        CacheUtils.cleanCacheDir(context)
+                        cacheSizeBytes = CacheUtils.getCacheSize(context)
+                        showCleanedToast = true
+                        delay(2000)
+                        showCleanedToast = false
+                    }
+                },
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("应用缓存", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            if (showCleanedToast) "清理成功"
+                            else "当前缓存: ${CacheUtils.formatSize(cacheSizeBytes)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (showCleanedToast) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    TextButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        scope.launch {
+                            CacheUtils.cleanCacheDir(context)
+                            cacheSizeBytes = CacheUtils.getCacheSize(context)
+                            showCleanedToast = true
+                            delay(2000)
+                            showCleanedToast = false
+                        }
+                    }) {
+                        Text(if (showCleanedToast) "✓" else "清理", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

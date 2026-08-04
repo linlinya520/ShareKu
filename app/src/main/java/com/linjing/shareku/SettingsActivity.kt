@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.screen.AboutScreen
 import com.linjing.shareku.ui.screen.AppearanceScreen
+import com.linjing.shareku.ui.screen.CacheCleanupScreen
 import com.linjing.shareku.ui.screen.ChangelogScreen
 import com.linjing.shareku.ui.screen.SettingsScreen
 import com.linjing.shareku.ui.theme.LocalShareTheme
@@ -88,11 +89,16 @@ AnimatedContent(
                             "security" -> SecurityPage(onBack = { page = "settings" })
                             "server" -> ServerPage(onBack = { page = "settings" })
                             "fileOps" -> FileOpsPage(onBack = { page = "settings" })
+                            "cacheCleanup" -> {
+                                BackHandler { page = "settings" }
+                                CacheCleanupScreen(onBack = { page = "settings" })
+                            }
                             else -> SettingsScreen(
                                 onBack = { finish() },
                                 onSecurity = { page = "security" },
                                 onServer = { page = "server" },
                                 onFileOps = { page = "fileOps" },
+                                onCacheCleanup = { page = "cacheCleanup" },
                                 onAppearance = { page = "appearance" },
                                 onAbout = { page = "about" }
                             )

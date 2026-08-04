@@ -1,5 +1,6 @@
 package com.linjing.shareku
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,14 +16,18 @@ import androidx.navigation.compose.rememberNavController
 import com.linjing.shareku.ui.navigation.LocalShareNavHost
 import com.linjing.shareku.ui.theme.LocalShareTheme
 import com.linjing.shareku.ui.theme.ThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // 清理上次分享残留的孤儿缓存文件（防止崩溃/kill导致的堆积）
-        cleanOrphanCache()
+        // 自动缓存清理：每次启动检测时间间隔
+        cleanCacheIfNeeded()
         setContent {
             val prefs = AppSingletons.preferencesManager
             val themeModeName by prefs.themeMode.collectAsState(initial = "SYSTEM")
@@ -37,9 +42,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
-                    val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val currentRoute = navBackStackEntry?.destination?.route
-
                     LocalShareNavHost(
                         navController = navController,
                         modifier = Modifier.fillMaxSize()
@@ -49,14 +51,47 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** 启动时清理上次分享残留的孤儿缓存文件（只清理超过10分钟的旧文件） */
-    private fun cleanOrphanCache() {
-        val files = cacheDir.listFiles() ?: return
-        val now = System.currentTimeMillis()
-        for (f in files) {
-            if (f.isFile && (now - f.lastModified()) > 10 * 60 * 1000) {
-                f.delete()
-            }
+    private fun cleanCacheIfNeeded() {
+        val ctx = applicationContext
+        val scope = CoroutineScope(Dispatchers.IO)
+        scope.launch {
+            try {
+                val prefs = AppSingletons.preferencesManager
+                val interval = prefs.autoCleanIntervalMinutes.first()
+                if (interval <= 0) return@launch
+
+                val lastClean = prefs.lastCleanupTime.first()
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastClean
+
+                if (elapsed < 0 || elapsed >= interval * 60_000L) {
+                    CacheUtils.cleanCacheDir(ctx)
+                    prefs.setLastCleanupTime(now)
+                }
+            } catch (_: Exception) { /* 清理失败不崩溃 */ }
+        }
+    }
+}
+
+/** 缓存工具：计算大小、清理 */
+object CacheUtils {
+    fun getCacheSize(context: Context): Long {
+        return context.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
+
+    fun cleanCacheDir(context: Context): Int {
+        var count = 0
+        context.cacheDir.listFiles()?.forEach { f ->
+            if (f.isFile && f.delete()) count++
+        }
+        return count
+    }
+
+    fun formatSize(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "${bytes} B"
+            bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+            else -> "${"%.1f".format(bytes.toDouble() / (1024 * 1024))} MB"
         }
     }
 }

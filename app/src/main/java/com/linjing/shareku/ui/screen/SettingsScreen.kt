@@ -25,6 +25,7 @@ fun SettingsScreen(
     onSecurity: () -> Unit,
     onServer: () -> Unit,
     onFileOps: () -> Unit,
+    onCacheCleanup: () -> Unit,
     onAppearance: () -> Unit,
     onAbout: () -> Unit
 ) {
@@ -76,7 +77,8 @@ fun SettingsScreen(
                 SettingEntry("安全", "身份验证 · 连接确认", Icons.Default.Lock, onSecurity),
                 SettingEntry("服务器", "端口 · WebDAV", Icons.Default.Dns, onServer),
                 SettingEntry("文件操作", "上传 · 覆盖 · 删除", Icons.Default.Folder, onFileOps),
-                SettingEntry("外观", "主题模式 · 配色方案", Icons.Default.Palette, onAppearance),
+                SettingEntry("缓存清理", "手动清理 · 自动清理间隔", Icons.Default.Delete, onCacheCleanup),
+                SettingEntry("外观", "深色模式 · 莫奈取色 · 配色方案", Icons.Default.Palette, onAppearance),
                 SettingEntry("关于", "版本信息 · 开发者 · 致谢", Icons.Default.Info, onAbout),
             )
 

@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
@@ -140,11 +142,15 @@ class ShareActivity : ComponentActivity() {
 
     private fun uriToCacheFile(uri: android.net.Uri): File? {
         return try {
-            val fileName = uri.lastPathSegment ?: "shared_file"
+            // 尝试从 ContentResolver 获取真实文件名（浏览器/下载管理器等）
+            val fileName = queryDisplayName(uri) ?: uri.lastPathSegment ?: "shared_file"
             val cacheFile = File(cacheDir, fileName)
-            contentResolver.openInputStream(uri)?.use { input ->
-                cacheFile.outputStream().use { output ->
-                    input.copyTo(output)
+            // 如果同名文件已存在（例如多次分享同一文件），跳过拷贝
+            if (!cacheFile.exists()) {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    cacheFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
             cacheFile
@@ -152,6 +158,18 @@ class ShareActivity : ComponentActivity() {
             e.printStackTrace()
             null
         }
+    }
+
+    /** 通过 ContentResolver 查询文件的显示名称（支持浏览器/下载管理器等 content:// URI） */
+    private fun queryDisplayName(uri: android.net.Uri): String? {
+        return try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx >= 0) cursor.getString(nameIdx) else null
+                } else null
+            }
+        } catch (_: Exception) { null }
     }
 
     private fun copyToCache(file: File): File {
