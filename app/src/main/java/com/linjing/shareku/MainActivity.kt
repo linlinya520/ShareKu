@@ -80,9 +80,10 @@ object CacheUtils {
     }
 
     fun cleanCacheDir(context: Context): Int {
+        val active = AppSingletons.activeSharedFiles.toSet()
         var count = 0
         context.cacheDir.listFiles()?.forEach { f ->
-            if (f.isFile && f.delete()) count++
+            if (f.isFile && f.absolutePath !in active && f.delete()) count++
         }
         return count
     }

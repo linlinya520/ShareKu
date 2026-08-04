@@ -70,6 +70,8 @@ class ShareActivity : ComponentActivity() {
         val cacheFiles = files.map { copyToCache(it) }
         receivedFiles.clear()
         receivedFiles.addAll(cacheFiles)
+        // 注册为活跃文件（防止自动清理误删）
+        cacheFiles.forEach { AppSingletons.activeSharedFiles.add(it.absolutePath) }
 
         val networkUtils = NetworkUtils()
         val iface = networkUtils.getPreferredInterface("auto")
@@ -207,7 +209,10 @@ class ShareActivity : ComponentActivity() {
     }
 
     private fun cleanupCache() {
-        receivedFiles.forEach { it.delete() }
+        receivedFiles.forEach {
+            AppSingletons.activeSharedFiles.remove(it.absolutePath)
+            it.delete()
+        }
         receivedFiles.clear()
     }
 
