@@ -61,6 +61,9 @@ object AppSingletons {
         _pendingConfirmIp.value = null
     }
 
+    /** 当前活跃的共享文件（缓存清理跳过） */
+    val activeSharedFiles = mutableSetOf<String>()
+
     fun init(context: Context) {
         preferencesManager = PreferencesManager(context)
         logManager = LogManager()

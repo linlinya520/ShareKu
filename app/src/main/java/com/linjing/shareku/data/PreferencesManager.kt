@@ -30,6 +30,8 @@ class PreferencesManager(private val context: Context) {
     val themeMode: Flow<String> = context.dataStore.data.map { it[KEY_THEME_MODE] ?: "SYSTEM" }
     val dynamicColor: Flow<Boolean> = context.dataStore.data.map { it[KEY_DYNAMIC_COLOR] ?: true }
     val paletteStyleOrdinal: Flow<Int> = context.dataStore.data.map { it[KEY_PALETTE_STYLE] ?: 0 }
+    val autoCleanIntervalMinutes: Flow<Int> = context.dataStore.data.map { it[KEY_AUTO_CLEAN] ?: 0 }
+    val lastCleanupTime: Flow<Long> = context.dataStore.data.map { it[KEY_LAST_CLEAN_TIME] ?: 0L }
 
     suspend fun setPort(port: Int) { context.dataStore.edit { it[KEY_PORT] = port } }
     suspend fun setEnableWebDav(value: Boolean) { context.dataStore.edit { it[KEY_WEBDAV] = value } }
@@ -46,6 +48,8 @@ class PreferencesManager(private val context: Context) {
     suspend fun setThemeMode(value: String) { context.dataStore.edit { it[KEY_THEME_MODE] = value } }
     suspend fun setDynamicColor(value: Boolean) { context.dataStore.edit { it[KEY_DYNAMIC_COLOR] = value } }
     suspend fun setPaletteStyleOrdinal(value: Int) { context.dataStore.edit { it[KEY_PALETTE_STYLE] = value } }
+    suspend fun setAutoCleanInterval(minutes: Int) { context.dataStore.edit { it[KEY_AUTO_CLEAN] = minutes } }
+    suspend fun setLastCleanupTime(time: Long) { context.dataStore.edit { it[KEY_LAST_CLEAN_TIME] = time } }
 
     companion object {
         private val KEY_PORT = intPreferencesKey("port")
@@ -64,5 +68,7 @@ class PreferencesManager(private val context: Context) {
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         private val KEY_PALETTE_STYLE = intPreferencesKey("palette_style")
+        private val KEY_AUTO_CLEAN = intPreferencesKey("auto_clean_interval")
+        private val KEY_LAST_CLEAN_TIME = longPreferencesKey("last_cleanup_time")
     }
 }

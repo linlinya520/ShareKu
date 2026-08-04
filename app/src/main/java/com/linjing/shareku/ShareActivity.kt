@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
@@ -57,6 +58,8 @@ class ShareActivity : ComponentActivity() {
     private var receivedFiles = mutableListOf<File>()
     private var isSandbox = false
 
+    private var serviceStarted = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -67,6 +70,8 @@ class ShareActivity : ComponentActivity() {
         val cacheFiles = files.map { copyToCache(it) }
         receivedFiles.clear()
         receivedFiles.addAll(cacheFiles)
+        // 注册为活跃文件（防止自动清理误删）
+        cacheFiles.forEach { AppSingletons.activeSharedFiles.add(it.absolutePath) }
 
         val networkUtils = NetworkUtils()
         val iface = networkUtils.getPreferredInterface("auto")
@@ -88,9 +93,11 @@ class ShareActivity : ComponentActivity() {
                     port = port,
                     onClose = {
                         stopServiceIfRunning()
+                        cleanupCache()
                         finish()
                     },
                     onStartSharing = { p ->
+                        serviceStarted = true
                         startShareService(
                             ip = ip,
                             port = p,
@@ -137,11 +144,14 @@ class ShareActivity : ComponentActivity() {
 
     private fun uriToCacheFile(uri: android.net.Uri): File? {
         return try {
-            val fileName = uri.lastPathSegment ?: "shared_file"
+            // 从 ContentResolver 获取真实文件名（浏览器分享用数字ID，需查询 DISPLAY_NAME）
+            val fileName = queryDisplayName(uri) ?: uri.lastPathSegment ?: "shared_file"
             val cacheFile = File(cacheDir, fileName)
-            contentResolver.openInputStream(uri)?.use { input ->
-                cacheFile.outputStream().use { output ->
-                    input.copyTo(output)
+            if (!cacheFile.exists()) {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    cacheFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
             cacheFile
@@ -149,6 +159,30 @@ class ShareActivity : ComponentActivity() {
             e.printStackTrace()
             null
         }
+    }
+
+    private fun queryDisplayName(uri: android.net.Uri): String? {
+        return try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) cursor.getString(idx) else null
+                } else null
+            }
+        } catch (_: Exception) { null }
+    }
+
+    private fun cleanupCache() {
+        receivedFiles.forEach {
+            AppSingletons.activeSharedFiles.remove(it.absolutePath)
+            it.delete()
+        }
+        receivedFiles.clear()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (!serviceStarted) cleanupCache()
     }
 
     private fun copyToCache(file: File): File {

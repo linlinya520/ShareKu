@@ -1,5 +1,6 @@
 package com.linjing.shareku
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -16,11 +17,17 @@ import androidx.navigation.compose.rememberNavController
 import com.linjing.shareku.ui.navigation.LocalShareNavHost
 import com.linjing.shareku.ui.theme.LocalShareTheme
 import com.linjing.shareku.ui.theme.ThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        cleanCacheIfNeeded()
         setContent {
             val prefs = AppSingletons.preferencesManager
             val themeModeName by prefs.themeMode.collectAsState(initial = "SYSTEM")
@@ -35,15 +42,48 @@ class MainActivity : ComponentActivity() {
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
-                    val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val currentRoute = navBackStackEntry?.destination?.route
-
-                    LocalShareNavHost(
-                        navController = navController,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    LocalShareNavHost(navController = navController, modifier = Modifier.fillMaxSize())
                 }
             }
         }
+    }
+
+    private fun cleanCacheIfNeeded() {
+        val ctx = applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val prefs = AppSingletons.preferencesManager
+                val interval = prefs.autoCleanIntervalMinutes.first()
+                if (interval <= 0) return@launch
+                val lastClean = prefs.lastCleanupTime.first()
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastClean
+                if (elapsed < 0 || elapsed >= interval * 60_000L) {
+                    CacheUtils.cleanCacheDir(ctx)
+                    prefs.setLastCleanupTime(now)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+}
+
+object CacheUtils {
+    fun getCacheSize(context: Context): Long {
+        return context.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
+
+    fun cleanCacheDir(context: Context): Int {
+        val active = AppSingletons.activeSharedFiles.toSet()
+        var count = 0
+        context.cacheDir.listFiles()?.forEach { f ->
+            if (f.isFile && f.absolutePath !in active && f.delete()) count++
+        }
+        return count
+    }
+
+    fun formatSize(bytes: Long): String = when {
+        bytes < 1024 -> "${bytes} B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "${"%.1f".format(bytes.toDouble() / (1024 * 1024))} MB"
     }
 }
