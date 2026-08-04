@@ -2,6 +2,11 @@ package com.linjing.shareku.ui.screen
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.linjing.shareku.R
 import com.linjing.shareku.ui.component.ZoomableImage
+import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,7 +98,7 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             MaterialTheme.colorScheme.onTertiaryContainer) {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/linlinya520/ShareKu")))
                         }
-                    AboutChip(R.drawable.ic_version_chip, "v1.1.1", "当前版本",
+                    AboutChip(R.drawable.ic_version_chip, "v1.1.2", "当前版本",
                         MaterialTheme.colorScheme.secondaryContainer,
                         MaterialTheme.colorScheme.onSecondaryContainer) { onChangelog() }
                     AboutChip(R.drawable.ic_license_chip, "GPL-3.0", "开源协议",
@@ -216,6 +222,21 @@ private fun AboutChip(
             Column {
                 Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = contentColor)
                 Text(description, style = MaterialTheme.typography.labelSmall, color = contentColor.copy(alpha = 0.7f))
+            }
+        }
+    }
+}
+
+class AboutActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            ShareThemeWrapper {
+                AboutScreen(
+                    onBack = { finish() },
+                    onChangelog = { startActivity(Intent(this@AboutActivity, ChangelogActivity::class.java)) }
+                )
             }
         }
     }

@@ -1,6 +1,10 @@
 package com.linjing.shareku.ui.screen
 
+import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -16,6 +20,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.theme.ShareThemeWrapper
 
 /** aShellYou 风格更新日志 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,6 +33,16 @@ fun ChangelogScreen(onBack: () -> Unit) {
 
     val changelogs = remember {
         listOf(
+            ChangelogEntry("v1.1.2", "2026-08", listOf(
+                "设置子页面全部独立为 Activity，享受系统级预测性返回动画",
+                "外观体验滚动流畅度大幅优化：LazyColumn 替换为 Column+verticalScroll",
+                "缓存清理界面 UI 统一：卡片背景与页面融合，不再凸起",
+                "缓存自动清理机制：启动时检查间隔，跳过活跃共享文件",
+                "浏览器分享文件名修复：通过 ContentResolver 查询真实文件名",
+                "主页新增缓存横条，支持一键手动清理",
+                "设置新增缓存清理子页面，可配置自动清理间隔",
+                "首页与设置页面切换动画统一为匀速整屏滑动",
+            )),
             ChangelogEntry("v1.1.1", "2026-07", listOf(
                 "剪贴板面板重构: 可收起为悬浮球, 拖拽移动, 5px死区防误触",
                 "修复悬浮球点击穿透到后方文件卡片",
@@ -125,6 +140,16 @@ fun ChangelogScreen(onBack: () -> Unit) {
                     item { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) }
                 }
             }
+        }
+    }
+}
+
+class ChangelogActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            ShareThemeWrapper { ChangelogScreen(onBack = { finish() }) }
         }
     }
 }

@@ -72,6 +72,55 @@
             android:label="@string/settings"
             android:theme="@style/Theme.MaterialShareKu" />
 
+        <!-- Settings: Security -->
+        <activity
+            android:name=".ui.screen.SecurityActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Settings: Server -->
+        <activity
+            android:name=".ui.screen.ServerActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Settings: FileOps -->
+        <activity
+            android:name=".ui.screen.FileOpsActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Settings: CacheCleanup -->
+        <activity
+            android:name=".ui.screen.CacheCleanupActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Settings: Appearance -->
+        <activity
+            android:name=".ui.screen.AppearanceActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Settings: About -->
+        <activity
+            android:name=".ui.screen.AboutActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Settings: Changelog -->
+        <activity
+            android:name=".ui.screen.ChangelogActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
         <!-- Foreground Service for HTTP server -->
         <service
             android:name=".service.ServerForegroundService"

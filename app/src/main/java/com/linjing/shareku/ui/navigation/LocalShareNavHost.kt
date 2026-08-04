@@ -1,7 +1,12 @@
 package com.linjing.shareku.ui.navigation
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -18,10 +23,23 @@ fun LocalShareNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
+    val anim = tween<IntOffset>(280, easing = LinearEasing)
     NavHost(
         navController = navController,
         startDestination = Routes.HOME,
-        modifier = modifier
+        modifier = modifier,
+        enterTransition = {
+            slideInHorizontally(initialOffsetX = { it }, animationSpec = anim)
+        },
+        exitTransition = {
+            slideOutHorizontally(targetOffsetX = { -it }, animationSpec = anim)
+        },
+        popEnterTransition = {
+            slideInHorizontally(initialOffsetX = { -it }, animationSpec = anim)
+        },
+        popExitTransition = {
+            slideOutHorizontally(targetOffsetX = { it }, animationSpec = anim)
+        }
     ) {
         composable(Routes.HOME) {
             HomeScreen(
