@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -26,7 +27,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // 自动缓存清理：每次启动检测时间间隔
         cleanCacheIfNeeded()
         setContent {
             val prefs = AppSingletons.preferencesManager
@@ -42,10 +42,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
-                    LocalShareNavHost(
-                        navController = navController,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    LocalShareNavHost(navController = navController, modifier = Modifier.fillMaxSize())
                 }
             }
         }
@@ -53,27 +50,23 @@ class MainActivity : ComponentActivity() {
 
     private fun cleanCacheIfNeeded() {
         val ctx = applicationContext
-        val scope = CoroutineScope(Dispatchers.IO)
-        scope.launch {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 val prefs = AppSingletons.preferencesManager
                 val interval = prefs.autoCleanIntervalMinutes.first()
                 if (interval <= 0) return@launch
-
                 val lastClean = prefs.lastCleanupTime.first()
                 val now = System.currentTimeMillis()
                 val elapsed = now - lastClean
-
                 if (elapsed < 0 || elapsed >= interval * 60_000L) {
                     CacheUtils.cleanCacheDir(ctx)
                     prefs.setLastCleanupTime(now)
                 }
-            } catch (_: Exception) { /* 清理失败不崩溃 */ }
+            } catch (_: Exception) {}
         }
     }
 }
 
-/** 缓存工具：计算大小、清理 */
 object CacheUtils {
     fun getCacheSize(context: Context): Long {
         return context.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
@@ -88,11 +81,9 @@ object CacheUtils {
         return count
     }
 
-    fun formatSize(bytes: Long): String {
-        return when {
-            bytes < 1024 -> "${bytes} B"
-            bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-            else -> "${"%.1f".format(bytes.toDouble() / (1024 * 1024))} MB"
-        }
+    fun formatSize(bytes: Long): String = when {
+        bytes < 1024 -> "${bytes} B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "${"%.1f".format(bytes.toDouble() / (1024 * 1024))} MB"
     }
 }

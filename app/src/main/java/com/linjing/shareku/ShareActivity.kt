@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.OpenableColumns
@@ -58,6 +57,7 @@ class ShareActivity : ComponentActivity() {
 
     private var receivedFiles = mutableListOf<File>()
     private var isSandbox = false
+
     private var serviceStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -144,10 +144,9 @@ class ShareActivity : ComponentActivity() {
 
     private fun uriToCacheFile(uri: android.net.Uri): File? {
         return try {
-            // 尝试从 ContentResolver 获取真实文件名（浏览器/下载管理器等）
+            // 从 ContentResolver 获取真实文件名（浏览器分享用数字ID，需查询 DISPLAY_NAME）
             val fileName = queryDisplayName(uri) ?: uri.lastPathSegment ?: "shared_file"
             val cacheFile = File(cacheDir, fileName)
-            // 如果同名文件已存在（例如多次分享同一文件），跳过拷贝
             if (!cacheFile.exists()) {
                 contentResolver.openInputStream(uri)?.use { input ->
                     cacheFile.outputStream().use { output ->
@@ -162,16 +161,28 @@ class ShareActivity : ComponentActivity() {
         }
     }
 
-    /** 通过 ContentResolver 查询文件的显示名称（支持浏览器/下载管理器等 content:// URI） */
     private fun queryDisplayName(uri: android.net.Uri): String? {
         return try {
             contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
-                    val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIdx >= 0) cursor.getString(nameIdx) else null
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) cursor.getString(idx) else null
                 } else null
             }
         } catch (_: Exception) { null }
+    }
+
+    private fun cleanupCache() {
+        receivedFiles.forEach {
+            AppSingletons.activeSharedFiles.remove(it.absolutePath)
+            it.delete()
+        }
+        receivedFiles.clear()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (!serviceStarted) cleanupCache()
     }
 
     private fun copyToCache(file: File): File {
@@ -205,21 +216,7 @@ class ShareActivity : ComponentActivity() {
         val intent = Intent(this, ServerForegroundService::class.java).apply {
             action = ServerForegroundService.ACTION_STOP
         }
-        startService(intent)
-    }
-
-    private fun cleanupCache() {
-        receivedFiles.forEach {
-            AppSingletons.activeSharedFiles.remove(it.absolutePath)
-            it.delete()
-        }
-        receivedFiles.clear()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // 安全网: 如果服务没启动就关闭了Activity, 清理残留缓存
-        if (!serviceStarted) cleanupCache()
+        startService(intent) // Will stop the service via its onStartCommand
     }
 }
 
