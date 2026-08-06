@@ -105,6 +105,29 @@ fun SecurityScreen(onBack: () -> Unit) {
                     }
                 )
             }
+
+            // ═══ 定位保活 ═══
+            Text("后台保护", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+            val enableLocation by prefs.enableLocationKeepAlive.collectAsState(initial = true)
+            CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                ListItem(
+                    headlineContent = { Text("后台定位保活", style = MaterialTheme.typography.bodyLarge) },
+                    supportingContent = {
+                        Text(
+                            "防止鸿蒙/国产手机熄屏或切后台后断网。仅用网络定位（低功耗），不记录坐标，不上传。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    trailingContent = {
+                        Switch(checked = enableLocation, onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            scope.launch { prefs.setEnableLocationKeepAlive(it) }
+                        })
+                    }
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
     }

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.io.File
 
 private val Context.dataStore by preferencesDataStore(name = "shareku_prefs")
 
@@ -32,6 +33,20 @@ class PreferencesManager(private val context: Context) {
     val paletteStyleOrdinal: Flow<Int> = context.dataStore.data.map { it[KEY_PALETTE_STYLE] ?: 0 }
     val autoCleanIntervalMinutes: Flow<Int> = context.dataStore.data.map { it[KEY_AUTO_CLEAN] ?: 0 }
     val lastCleanupTime: Flow<Long> = context.dataStore.data.map { it[KEY_LAST_CLEAN_TIME] ?: 0L }
+    val receiveDir: Flow<String> = context.dataStore.data.map { it[KEY_RECEIVE_DIR] ?: "/sdcard/Download/ShareKu" }
+    val enableLocationKeepAlive: Flow<Boolean> = context.dataStore.data.map { it[KEY_LOCATION_KEEPALIVE] ?: true }
+
+    /** Write-safe receive directory: if configured dir is unwritable, fall back to app files dir. */
+    fun getReceiveDirFile(context: Context, configuredPath: String): File {
+        val dir = File(configuredPath)
+        if (dir.exists() && dir.isDirectory && dir.canWrite()) return dir
+        // Try to create it
+        if (dir.mkdirs() && dir.canWrite()) return dir
+        // Fallback to app's external files dir (always writable)
+        val fallback = File(context.getExternalFilesDir(null), "ShareKu")
+        if (!fallback.exists()) fallback.mkdirs()
+        return fallback
+    }
 
     suspend fun setPort(port: Int) { context.dataStore.edit { it[KEY_PORT] = port } }
     suspend fun setEnableWebDav(value: Boolean) { context.dataStore.edit { it[KEY_WEBDAV] = value } }
@@ -50,6 +65,8 @@ class PreferencesManager(private val context: Context) {
     suspend fun setPaletteStyleOrdinal(value: Int) { context.dataStore.edit { it[KEY_PALETTE_STYLE] = value } }
     suspend fun setAutoCleanInterval(minutes: Int) { context.dataStore.edit { it[KEY_AUTO_CLEAN] = minutes } }
     suspend fun setLastCleanupTime(time: Long) { context.dataStore.edit { it[KEY_LAST_CLEAN_TIME] = time } }
+    suspend fun setReceiveDir(value: String) { context.dataStore.edit { it[KEY_RECEIVE_DIR] = value } }
+    suspend fun setEnableLocationKeepAlive(value: Boolean) { context.dataStore.edit { it[KEY_LOCATION_KEEPALIVE] = value } }
 
     companion object {
         private val KEY_PORT = intPreferencesKey("port")
@@ -70,5 +87,7 @@ class PreferencesManager(private val context: Context) {
         private val KEY_PALETTE_STYLE = intPreferencesKey("palette_style")
         private val KEY_AUTO_CLEAN = intPreferencesKey("auto_clean_interval")
         private val KEY_LAST_CLEAN_TIME = longPreferencesKey("last_cleanup_time")
+        private val KEY_RECEIVE_DIR = stringPreferencesKey("receive_dir")
+        private val KEY_LOCATION_KEEPALIVE = booleanPreferencesKey("location_keepalive")
     }
 }

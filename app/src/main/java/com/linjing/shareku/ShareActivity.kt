@@ -57,8 +57,8 @@ class ShareActivity : ComponentActivity() {
 
     private var receivedFiles = mutableListOf<File>()
     private var isSandbox = false
-
     private var serviceStarted = false
+    private var directEngine: io.ktor.server.engine.EmbeddedServer<*, *>? = null // for standalone share server
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,7 +77,13 @@ class ShareActivity : ComponentActivity() {
         val iface = networkUtils.getPreferredInterface("auto")
         val ip = iface?.ipAddress ?: "127.0.0.1"
         val port = runBlocking { AppSingletons.preferencesManager.port.first() }
-        val url = "http://$ip:$port"
+        // If server already running (e.g. from main page), auto-offset to avoid conflict
+        val actualPort = if (AppSingletons.isServerRunning.value) {
+            var p = port + 1
+            while (!java.net.ServerSocket(p).use { true }) { p++ }
+            p
+        } else port
+        val url = "http://$ip:$actualPort"
         // 同步读取当前主题
         val initialTheme = runBlocking { AppSingletons.preferencesManager.themeMode.first() }
         setContent {
@@ -90,7 +96,7 @@ class ShareActivity : ComponentActivity() {
                     files = cacheFiles,
                     url = url,
                     ip = ip,
-                    port = port,
+                    port = actualPort,
                     onClose = {
                         stopServiceIfRunning()
                         cleanupCache()
@@ -199,24 +205,54 @@ class ShareActivity : ComponentActivity() {
         files: List<File>,
         singleFileSandbox: Boolean
     ) {
-        val intent = Intent(this, ServerForegroundService::class.java).apply {
-            action = ServerForegroundService.ACTION_START
-            putExtra(ServerForegroundService.EXTRA_HOST, ip)
-            putExtra(ServerForegroundService.EXTRA_PORT, port)
-            putStringArrayListExtra(ServerForegroundService.EXTRA_FILES, ArrayList(files.map { it.absolutePath }))
-            putExtra(ServerForegroundService.EXTRA_SINGLE_FILE, singleFileSandbox)
-            putExtra(ServerForegroundService.EXTRA_UPLOAD, false)
-            putExtra(ServerForegroundService.EXTRA_DELETE, false)
-            putExtra(ServerForegroundService.EXTRA_WEBDAV, true)
+        // If main server is already running, start a separate standalone server
+        if (AppSingletons.isServerRunning.value) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    val srv = com.linjing.shareku.server.ShareKuServer(
+                        context = this@ShareActivity,
+                        logManager = AppSingletons.logManager,
+                        sharedFiles = files,
+                        isSingleFileSandbox = singleFileSandbox,
+                        allowUpload = false,
+                        allowDelete = false,
+                        enableWebDav = true
+                    )
+                    val engine = srv.start(ip, port)
+                    engine.start(wait = false)
+                    directEngine = engine
+                    serviceStarted = true
+                } catch (e: Exception) {
+                    android.util.Log.e("ShareKu", "Share server failed", e)
+                }
+            }
+        } else {
+            // No server running → use the foreground service (normal flow)
+            val intent = Intent(this, ServerForegroundService::class.java).apply {
+                action = ServerForegroundService.ACTION_START
+                putExtra(ServerForegroundService.EXTRA_HOST, ip)
+                putExtra(ServerForegroundService.EXTRA_PORT, port)
+                putStringArrayListExtra(ServerForegroundService.EXTRA_FILES, ArrayList(files.map { it.absolutePath }))
+                putExtra(ServerForegroundService.EXTRA_SINGLE_FILE, singleFileSandbox)
+                putExtra(ServerForegroundService.EXTRA_UPLOAD, false)
+                putExtra(ServerForegroundService.EXTRA_DELETE, false)
+                putExtra(ServerForegroundService.EXTRA_WEBDAV, true)
+            }
+            startService(intent)
+            serviceStarted = true
         }
-        startService(intent)
     }
 
     private fun stopServiceIfRunning() {
+        directEngine?.stop(1000, 2000)
+        directEngine = null
+        if (!AppSingletons.isServerRunning.value || directEngine != null) {
+            // If we started a standalone server, stop it; otherwise stop the main service
+        }
         val intent = Intent(this, ServerForegroundService::class.java).apply {
             action = ServerForegroundService.ACTION_STOP
         }
-        startService(intent) // Will stop the service via its onStartCommand
+        startService(intent)
     }
 }
 

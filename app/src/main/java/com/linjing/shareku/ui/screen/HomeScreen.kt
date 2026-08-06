@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.location.LocationManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -39,6 +40,7 @@ import androidx.core.content.ContextCompat
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.CacheUtils
 import com.linjing.shareku.SettingsActivity
+import com.linjing.shareku.ui.screen.DirectShareActivity
 import com.linjing.shareku.server.NetworkUtils
 import com.linjing.shareku.service.ServerForegroundService
 import com.linjing.shareku.ui.component.CustomCard
@@ -75,12 +77,15 @@ fun HomeScreen(
     val allowDelete by prefs.allowDelete.collectAsState(initial = false)
     val allowOverwrite by prefs.allowOverwrite.collectAsState(initial = true)
     val requireConnectionConfirm by prefs.requireConnectionConfirm.collectAsState(initial = false)
+    val enableLocationKeepAlive by prefs.enableLocationKeepAlive.collectAsState(initial = true)
     val sharedDir by prefs.sharedDir.collectAsState(initial = "/sdcard")
     var showDirDialog by remember { mutableStateOf(false) }
     var dirInput by remember { mutableStateOf(sharedDir) }
     var showFileBrowser by remember { mutableStateOf(false) }
     var showPortDialog by remember { mutableStateOf(false) }
     var portInput by remember { mutableStateOf(port.toString()) }
+    var showLocExplainDialog by remember { mutableStateOf(false) }
+    var showLocServiceOffDialog by remember { mutableStateOf(false) }
 
     // SAF directory picker launcher
     val safDirLauncher = rememberLauncherForActivityResult(
@@ -121,6 +126,25 @@ fun HomeScreen(
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* ignore */ }
+
+    // Location permission launcher (background keepalive)
+    val locationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* ignore */ }
+    // Location service (system toggle) launcher
+    val locationServiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { /* re-check after return */ }
+
+    // ── 定位辅助函数 ──
+    fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+    fun isLocationServiceOn(): Boolean {
+        val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager ?: return false
+        return lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) || lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+    }
 
     // 请求通知权限 (Android 13+) —— 必须在 notificationLauncher 声明之后
     LaunchedEffect(Unit) {
@@ -454,7 +478,7 @@ AnimatedContent(
                     ) { running ->
                         if (running) {
                             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("🟢 服务运行中", style = MaterialTheme.typography.titleMedium,
+                                Text("🔆 服务运行中", style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 QrCodeCard(url = url, modifier = Modifier.size(200.dp))
@@ -494,10 +518,68 @@ AnimatedContent(
                                 Text("从任意应用中分享文件\n或手动启动服务器",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("若启动后闪退，可能是端口 $port 被占用，\n请在设置中更换端口",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    textAlign = TextAlign.Center)
                             }
                         }
                     }
                 }
+            }
+
+            // ── 后台定位保活快捷开关 ──
+            if (!isServerRunning) {
+                CustomCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = 20.dp,
+                    border = null,
+                    clickable = false,
+                    enableHaptic = false,
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (enableLocationKeepAlive)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.surfaceContainer
+                    )
+                ) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.LocationOn, null,
+                                tint = if (enableLocationKeepAlive) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("后台定位保活", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                Text("防止熄屏/切后台后断网", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = enableLocationKeepAlive, onCheckedChange = { v ->
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                scope.launch { prefs.setEnableLocationKeepAlive(v) }
+                            })
+                        }
+                        if (enableLocationKeepAlive) {
+                            Spacer(Modifier.height(8.dp))
+                            val locPermOk = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || hasLocationPermission()
+                            val locSvcOk = isLocationServiceOn()
+                            when {
+                                !locPermOk -> Text("⚠️ 未授权定位权限，点击启动时将弹窗引导授权",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                !locSvcOk -> Text("⚠️ 系统定位服务已关闭，需开启才能保活",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -528,26 +610,40 @@ AnimatedContent(
                         Text("停止服务器", fontWeight = FontWeight.Bold)
                     }
                 } else {
+                    // Reusable start helper
+                    fun doStartService() {
+                        val intent = Intent(context, ServerForegroundService::class.java).apply {
+                            action = ServerForegroundService.ACTION_START
+                            putExtra(ServerForegroundService.EXTRA_HOST, ip)
+                            putExtra(ServerForegroundService.EXTRA_PORT, port)
+                            putStringArrayListExtra(ServerForegroundService.EXTRA_FILES,
+                                ArrayList(listOf(sharedDir)))
+                            putExtra(ServerForegroundService.EXTRA_AUTH, enableAuth)
+                            putExtra(ServerForegroundService.EXTRA_AUTH_USER, authUsername)
+                            putExtra(ServerForegroundService.EXTRA_AUTH_PASS, authPassword)
+                            putExtra(ServerForegroundService.EXTRA_WEBDAV, enableWebDav)
+                            putExtra(ServerForegroundService.EXTRA_UPLOAD, allowUpload)
+                            putExtra(ServerForegroundService.EXTRA_DELETE, allowDelete)
+                            putExtra(ServerForegroundService.EXTRA_OVERWRITE, allowOverwrite)
+                            putExtra(ServerForegroundService.EXTRA_CONFIRM, requireConnectionConfirm)
+                        }
+                        context.startService(intent)
+                        AppSingletons.setServerRunning(true)
+                    }
+
                     Button(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            val intent = Intent(context, ServerForegroundService::class.java).apply {
-                                action = ServerForegroundService.ACTION_START
-                                putExtra(ServerForegroundService.EXTRA_HOST, ip)
-                                putExtra(ServerForegroundService.EXTRA_PORT, port)
-                                putStringArrayListExtra(ServerForegroundService.EXTRA_FILES,
-                                    ArrayList(listOf(sharedDir)))
-                                putExtra(ServerForegroundService.EXTRA_AUTH, enableAuth)
-                                putExtra(ServerForegroundService.EXTRA_AUTH_USER, authUsername)
-                                putExtra(ServerForegroundService.EXTRA_AUTH_PASS, authPassword)
-                                putExtra(ServerForegroundService.EXTRA_WEBDAV, enableWebDav)
-                                putExtra(ServerForegroundService.EXTRA_UPLOAD, allowUpload)
-                                putExtra(ServerForegroundService.EXTRA_DELETE, allowDelete)
-                                putExtra(ServerForegroundService.EXTRA_OVERWRITE, allowOverwrite)
-                                putExtra(ServerForegroundService.EXTRA_CONFIRM, requireConnectionConfirm)
+                            // ═══ 定位保活预检 ═══
+                            if (enableLocationKeepAlive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                when {
+                                    !hasLocationPermission() -> showLocExplainDialog = true
+                                    !isLocationServiceOn() -> showLocServiceOffDialog = true
+                                    else -> doStartService()
+                                }
+                            } else {
+                                doStartService()
                             }
-                            context.startService(intent)
-                            AppSingletons.setServerRunning(true)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(28.dp)
@@ -577,6 +673,34 @@ AnimatedContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
+                }
+            }
+
+            // ── 设备直连 ──
+            Spacer(modifier = Modifier.height(12.dp))
+            CustomCard(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    context.startActivity(Intent(context, DirectShareActivity::class.java))
+                },
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.DevicesOther, null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("设备直连", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f))
+                        Text("两台手机直接传输文件，无需浏览器",
+                            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
                 }
             }
 
@@ -663,6 +787,50 @@ AnimatedContent(
         )
     }
 
+    // Location explanation dialog
+    if (showLocExplainDialog) {
+        AlertDialog(
+            onDismissRequest = { showLocExplainDialog = false },
+            title = { Text("后台定位保活说明") },
+            text = {
+                Text("为防止鸿蒙/国产手机在熄屏或切后台后切断网络连接，ShareKu 需要在后台使用定位服务保持网络活跃。\n\n• 仅使用网络定位（低功耗），不会使用 GPS\n• 不会记录或上传任何位置信息\n• 可在「设置 → 安全 → 后台定位保活」中随时关闭")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showLocExplainDialog = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                    }
+                }) { Text("知道了，去授权") }
+            },
+            dismissButton = { TextButton(onClick = { showLocExplainDialog = false }) { Text("暂不") } }
+        )
+    }
+    // Location service off dialog
+    if (showLocServiceOffDialog) {
+        AlertDialog(
+            onDismissRequest = { showLocServiceOffDialog = false },
+            title = { Text("需开启系统定位服务") },
+            text = {
+                Text("后台定位保活需要系统的「定位服务」处于开启状态。\n\n当前系统定位服务已关闭，定位保活将无法工作。\n\n请前往系统设置开启定位后重新启动。")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showLocServiceOffDialog = false
+                    // Open system location settings
+                    val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                    locationServiceLauncher.launch(intent)
+                }) { Text("前往开启") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showLocServiceOffDialog = false
+                    // Start anyway without location keepalive
+                    // Note: doStartService is not accessible here, just dismiss
+                }) { Text("暂不开启") }
+            }
+        )
+    }
     // File browser dialog
     if (showFileBrowser) {
         FileBrowserDialog(

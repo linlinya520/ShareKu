@@ -71,9 +71,12 @@ class ShareKuServer(
     val enableWebDav: Boolean = true,
     val requireConfirm: Boolean = false,
     val uploadDir: File? = null,
+    val receiveDir: File? = null,
     val clipboardManager: ClipboardManager? = null,
     // 连接确认回调：当新IP需要审批时调用，传入IP地址
-    val onNewConnection: ((String) -> Unit)? = null
+    val onNewConnection: ((String) -> Unit)? = null,
+    // 直连传输请求回调：发送端IP + 文件名 + 大小 + 临时文件路径
+    val onPeerTransfer: ((senderIp: String, fileName: String, fileSize: Long, tempFile: File) -> Unit)? = null
 ) {
     private val _logChannel = Channel<LogEntry>(Channel.UNLIMITED)
     private val _clipboardState = MutableStateFlow("")
@@ -162,6 +165,40 @@ class ShareKuServer(
             // Unauthenticated endpoints
             get("/api/status") {
                 call.respondText("""{"allowUpload":$allowUpload,"allowDelete":$allowDelete,"authRequired":$enableAuth,"webdav":$enableWebDav}""", ContentType.Application.Json)
+            }
+            // Peer-to-peer file receive endpoint (raw binary) — requires approval
+            post("/api/peer-upload") {
+                val destDir = receiveDir ?: File(context.getExternalFilesDir(null), "ShareKu").also { it.mkdirs() }
+                if (!destDir.exists()) destDir.mkdirs()
+                try {
+                    val rawName = call.request.queryParameters["name"] ?: "received_${System.currentTimeMillis()}"
+                    val origName = rawName.replace(":", "_").replace("/", "_").replace("\\", "_")
+                        .replace(Regex("[^a-zA-Z0-9._\\-]"), "_")
+                    // Save to temp file first, then request approval
+                    val tempDir = File(context.cacheDir, "peer_pending")
+                    if (!tempDir.exists()) tempDir.mkdirs()
+                    val tempFile = File(tempDir, "${System.currentTimeMillis()}_$origName")
+                    val channel = call.request.receiveChannel()
+                    tempFile.outputStream().use { fos ->
+                        val buf = ByteArray(32768)
+                        while (!channel.isClosedForRead) {
+                            val r = channel.readAvailable(buf, 0, buf.size)
+                            if (r <= 0) break
+                            fos.write(buf, 0, r)
+                        }
+                    }
+                    val finalDest = File(destDir, origName)
+                    // Notify callback on main thread → shows approval notification
+                    val senderIp = call.request.local.remoteHost
+                    onPeerTransfer?.let { cb ->
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            cb(senderIp, origName, tempFile.length(), tempFile)
+                        }
+                    }
+                    call.respondText("""{"status":"pending","name":"$origName","size":${tempFile.length()}}""", ContentType.Application.Json)
+                } catch (e: Exception) {
+                    call.respondText("""{"error":"${e.message}"}""", status = HttpStatusCode.InternalServerError)
+                }
             }
             get("/api/clipboard") {
                 val clip = clipboardManager?.primaryClip?.getItemAt(0)?.text?.toString() ?: ""

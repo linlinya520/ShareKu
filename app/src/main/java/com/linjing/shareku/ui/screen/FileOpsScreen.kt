@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,6 +33,9 @@ fun FileOpsScreen(onBack: () -> Unit) {
     val allowUpload by prefs.allowUpload.collectAsState(initial = false)
     val allowOverwrite by prefs.allowOverwrite.collectAsState(initial = true)
     val allowDelete by prefs.allowDelete.collectAsState(initial = false)
+    val receiveDir by prefs.receiveDir.collectAsState(initial = "/sdcard/Download/ShareKu")
+    var showDirDialog by remember { mutableStateOf(false) }
+    var dirInput by remember { mutableStateOf(receiveDir) }
 
     BackHandler { onBack() }
 
@@ -47,6 +52,56 @@ fun FileOpsScreen(onBack: () -> Unit) {
             SwitchRow("允许上传", "允许已连接的设备上传文件", allowUpload) { scope.launch { prefs.setAllowUpload(it) } }
             SwitchRow("允许覆盖", "允许覆盖已有文件（WebDAV 必须）", allowOverwrite) { scope.launch { prefs.setAllowOverwrite(it) } }
             SwitchRow("允许删除", "允许已连接的设备删除文件", allowDelete) { scope.launch { prefs.setAllowDelete(it) } }
+
+            // ═══ 接收目录 ═══
+            Text("接收文件", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+            CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                ListItem(
+                    headlineContent = { Text("默认保存位置", style = MaterialTheme.typography.bodyLarge) },
+                    supportingContent = {
+                        Text(receiveDir, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    },
+                    trailingContent = {
+                        FilledTonalButton(onClick = {
+                            dirInput = receiveDir
+                            showDirDialog = true
+                        }) { Text("更改") }
+                    }
+                )
+            }
+
+            if (showDirDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDirDialog = false },
+                    title = { Text("接收文件保存位置") },
+                    text = {
+                        Column {
+                            Text("设备直连接收的文件将保存到此目录",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = dirInput, singleLine = true,
+                                onValueChange = { dirInput = it },
+                                label = { Text("目录路径") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            scope.launch { prefs.setReceiveDir(dirInput) }
+                            showDirDialog = false
+                        }) { Text("确认") }
+                    },
+                    dismissButton = { TextButton(onClick = { showDirDialog = false }) { Text("取消") } }
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
         }
     }

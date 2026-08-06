@@ -18,3 +18,9 @@ local.properties
 aShellYou-master/
 InstallerX-Revived-main/
 setup_android_env.sh
+
+# Local AI workspace
+.backup/
+.operit/
+app/build/
+ShareKu-*.apk

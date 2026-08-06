@@ -7,36 +7,54 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.ClipboardManager
+import android.location.LocationManager
+import android.location.LocationListener
+import android.os.Looper
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.ShareKuApp
 import com.linjing.shareku.MainActivity
 import com.linjing.shareku.R
 import com.linjing.shareku.server.ShareKuServer
+import com.linjing.shareku.peer.PeerDiscovery
 import io.ktor.server.engine.ApplicationEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 
 class ServerForegroundService : Service() {
 
     private val logManager get() = AppSingletons.logManager
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        android.util.Log.e("ShareKu", "Server crash", e)
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(this@ServerForegroundService, "服务器异常: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        }
+        AppSingletons.setServerRunning(false)
+        stopSelf()
+    })
     private var serverEngine: io.ktor.server.engine.EmbeddedServer<*, *>? = null
     private var server: ShareKuServer? = null
+    private val peerDiscovery by lazy { PeerDiscovery(this) }
 
     companion object {
         const val ACTION_START = "com.material.localshare.action.START_SERVER"
         const val ACTION_STOP = "com.material.localshare.action.STOP_SERVER"
         const val ACTION_APPROVE = "com.material.localshare.action.APPROVE_IP"
         const val ACTION_DENY = "com.material.localshare.action.DENY_IP"
+        const val ACTION_APPROVE_TRANSFER = "com.material.localshare.action.APPROVE_TRANSFER"
+        const val ACTION_REJECT_TRANSFER = "com.material.localshare.action.REJECT_TRANSFER"
         const val EXTRA_HOST = "extra_host"
         const val EXTRA_PORT = "extra_port"
         const val EXTRA_FILES = "extra_files"
@@ -51,8 +69,11 @@ class ServerForegroundService : Service() {
         const val EXTRA_CONFIRM = "extra_confirm"
         const val EXTRA_CONFIRM_IP = "extra_confirm_ip"
         const val EXTRA_UPLOAD_DIR = "extra_upload_dir"
+        const val EXTRA_TRANSFER_FILE = "extra_transfer_file"
+        const val EXTRA_TRANSFER_DEST = "extra_transfer_dest"
         const val NOTIFICATION_ID = 1001
         const val NOTIFY_CONFIRM_ID = 1002
+        const val NOTIFY_TRANSFER_ID = 1003
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -74,8 +95,9 @@ class ServerForegroundService : Service() {
                 val webdav = intent.getBooleanExtra(EXTRA_WEBDAV, true)
                 val confirm = intent.getBooleanExtra(EXTRA_CONFIRM, false)
                 val uploadDir = intent.getStringExtra(EXTRA_UPLOAD_DIR)
+                val receiveDir = runBlocking { AppSingletons.preferencesManager.receiveDir.first() }
                 val files = filePaths.map { File(it) }
-                startServer(host, port, files, singleFile, upload, delete, overwrite, auth, authUser, authPass, webdav, confirm, uploadDir?.let { File(it) })
+                startServer(host, port, files, singleFile, upload, delete, overwrite, auth, authUser, authPass, webdav, confirm, uploadDir?.let { File(it) }, receiveDir)
             }
             ACTION_STOP -> {
                 stopServer()
@@ -101,6 +123,36 @@ class ServerForegroundService : Service() {
                 AppSingletons.dequeuePendingIp()
                 cancelConfirmNotification()
             }
+            ACTION_APPROVE_TRANSFER -> {
+                val tempPath = intent.getStringExtra(EXTRA_TRANSFER_FILE) ?: return START_NOT_STICKY
+                val destDir = intent.getStringExtra(EXTRA_TRANSFER_DEST) ?: return START_NOT_STICKY
+                serviceScope.launch {
+                    val tempFile = File(tempPath)
+                    if (tempFile.exists()) {
+                        val destFile = File(destDir, tempFile.name.replaceFirst(Regex("^\\d+_"), ""))
+                        var counter = 1
+                        var finalDest = destFile
+                        while (finalDest.exists()) {
+                            val dot = destFile.name.lastIndexOf('.')
+                            val base = if (dot > 0) destFile.name.substring(0, dot) else destFile.name
+                            val ext = if (dot > 0) destFile.name.substring(dot) else ""
+                            finalDest = File(destDir, "${base}_${counter}${ext}")
+                            counter++
+                        }
+                        tempFile.copyTo(finalDest, overwrite = true)
+                        tempFile.delete()
+                    }
+                    cancelTransferNotification()
+                }
+            }
+            ACTION_REJECT_TRANSFER -> {
+                val tempPath = intent.getStringExtra(EXTRA_TRANSFER_FILE) ?: return START_NOT_STICKY
+                serviceScope.launch {
+                    val tempFile = File(tempPath)
+                    if (tempFile.exists()) tempFile.delete()
+                    cancelTransferNotification()
+                }
+            }
         }
         return START_STICKY
     }
@@ -109,14 +161,15 @@ class ServerForegroundService : Service() {
         host: String, port: Int, files: List<File>,
         singleFileSandbox: Boolean, upload: Boolean, delete: Boolean, overwrite: Boolean,
         auth: Boolean, authUser: String, authPass: String,
-        webdav: Boolean, confirm: Boolean, uploadDir: File?
+        webdav: Boolean, confirm: Boolean, uploadDir: File?, receiveDir: String
     ) {
         val notification = createNotification(host, port)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        startLocationKeepAlive()
 
         serviceScope.launch {
             try {
@@ -135,35 +188,50 @@ class ServerForegroundService : Service() {
                     enableWebDav = webdav,
                     requireConfirm = confirm,
                     uploadDir = uploadDir,
+                    receiveDir = File(receiveDir),
                     clipboardManager = clipboardManager,
                     onNewConnection = { ip ->
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             showConfirmNotification(ip)
+                        }
+                    },
+                    onPeerTransfer = { senderIp, fileName, fileSize, tempFile ->
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            showTransferNotification(senderIp, fileName, fileSize, tempFile)
                         }
                     }
                 )
                 // Port fallback: try up to 10 ports if occupied
                 var actualPort = port
                 var engine: io.ktor.server.engine.EmbeddedServer<*, *>? = null
+                val srv = server ?: return@launch
                 for (attempt in 0 until 10) {
                     try {
-                        engine = server!!.start(host, actualPort)
+                        engine = srv.start(host, actualPort)
                         engine.start(wait = false)
                         serverEngine = engine
+                        // Register NSD so other devices can discover us
+                        peerDiscovery.registerService(actualPort)
                         break
-                    } catch (e: java.net.BindException) {
-                        actualPort++
+                    } catch (e: Exception) {
                         if (attempt == 9) throw e
+                        actualPort++
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(this@ServerForegroundService, "服务启动失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                }
+                AppSingletons.setServerRunning(false)
                 stopSelf()
             }
         }
     }
 
     private fun stopServer() {
+        stopLocationKeepAlive()
+        peerDiscovery.unregisterService()
         serviceScope.launch {
             serverEngine?.stop(1000, 2000)
             serverEngine = null
@@ -206,6 +274,77 @@ class ServerForegroundService : Service() {
     private fun cancelConfirmNotification() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(NOTIFY_CONFIRM_ID)
+    }
+
+    // ═══ 传输审批通知 ═══
+    private var transferDestDir: String = ""
+    private var transferTempFile: String = ""
+
+    private fun showTransferNotification(senderIp: String, fileName: String, fileSize: Long, tempFile: File) {
+        transferDestDir = (server?.receiveDir ?: File(getExternalFilesDir(null), "ShareKu")).also { if (!it.exists()) it.mkdirs() }.absolutePath
+        transferTempFile = tempFile.absolutePath
+
+        val sizeStr = when {
+            fileSize < 1024 -> "${fileSize}B"
+            fileSize < 1024 * 1024 -> "${fileSize / 1024}KB"
+            else -> "${"%.1f".format(fileSize.toDouble() / (1024 * 1024))}MB"
+        }
+        val approveIntent = PendingIntent.getService(
+            this, ("TA" + senderIp).hashCode() and 0xFFFF,
+            Intent(this, ServerForegroundService::class.java).apply {
+                action = ACTION_APPROVE_TRANSFER
+                putExtra(EXTRA_TRANSFER_FILE, transferTempFile)
+                putExtra(EXTRA_TRANSFER_DEST, transferDestDir)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val rejectIntent = PendingIntent.getService(
+            this, ("TR" + senderIp).hashCode() and 0xFFFF,
+            Intent(this, ServerForegroundService::class.java).apply {
+                action = ACTION_REJECT_TRANSFER
+                putExtra(EXTRA_TRANSFER_FILE, transferTempFile)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notify = NotificationCompat.Builder(this, ShareKuApp.CHANNEL_CONFIRM)
+            .setContentTitle("文件传输请求")
+            .setContentText("$senderIp 发送: $fileName ($sizeStr)")
+            .setSmallIcon(android.R.drawable.ic_menu_save)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .addAction(android.R.drawable.ic_input_add, "接受", approveIntent)
+            .addAction(android.R.drawable.ic_delete, "拒绝", rejectIntent)
+            .build()
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFY_TRANSFER_ID, notify)
+    }
+
+    private fun cancelTransferNotification() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(NOTIFY_TRANSFER_ID)
+    }
+
+    // ═══ 后台定位保活 (鸿蒙/国产ROM防断网) ═══
+    private var locationManager: LocationManager? = null
+    private var locationListener: LocationListener? = null
+
+    private fun startLocationKeepAlive() {
+        // Check if user has enabled location keep-alive in settings
+        val enabled = runBlocking { AppSingletons.preferencesManager.enableLocationKeepAlive.first() }
+        if (!enabled) return
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        try {
+            locationListener = LocationListener { /* 不需要坐标，只需"呼吸" */ }
+            // NETWORK_PROVIDER: 低功耗，不显示GPS图标
+            locationManager?.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 60_000L, 0f, locationListener!!, Looper.getMainLooper())
+        } catch (_: Exception) {}
+    }
+
+    private fun stopLocationKeepAlive() {
+        locationListener?.let { locationManager?.removeUpdates(it) }
+        locationListener = null
+        locationManager = null
     }
 
     private fun createNotification(host: String, port: Int): Notification {
