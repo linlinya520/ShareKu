@@ -6,8 +6,11 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.jvm.javaio.toByteReadChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -69,11 +72,14 @@ class PeerTransferClient {
             )
 
             try {
-                val fileBytes = withContext(Dispatchers.IO) { file.readBytes() }
-
+                // 流式发送：边读边传，内存占用恒定，避免大文件 OOM
                 val response = withContext(Dispatchers.IO) {
                     client.post("http://$host:$port/api/peer-upload?name=${java.net.URLEncoder.encode(file.name, "UTF-8")}") {
-                        setBody(fileBytes)
+                        setBody(object : OutgoingContent.ReadChannelContent() {
+                            override val contentLength: Long = file.length()
+                            override fun readFrom(): ByteReadChannel =
+                                file.inputStream().toByteReadChannel()
+                        })
                         contentType(ContentType.Application.OctetStream)
                     }
                 }
