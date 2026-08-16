@@ -40,7 +40,16 @@ var g=document.getElementById('grid'),e=document.getElementById('empty'),a=docum
 })();
 function connectWS(){
  try{ws=new WebSocket((location.protocol=='https:'?'wss':'ws')+'://'+location.host+'/ws');
-  ws.onmessage=function(m){if(m.data.startsWith('clipboard_data:'))document.getElementById('clipIn').value=m.data.slice(15)};
+  ws.onmessage=function(m){
+   var d=m.data;
+   if(d.startsWith('clipboard_data:')){document.getElementById('clipIn').value=d.slice(15);return}
+   if(d.charAt(0)==='{'){
+    try{var j=JSON.parse(d);
+     if(j.type==='up'){showSaveProg(j.name,j.written,j.total)}
+     else if(j.type==='up_done'){showSaveDone(j.name,j.size)}
+    }catch(x){}
+   }
+  };
   ws.onclose=function(){setTimeout(connectWS,3000)};
  }catch(x){}
 }
@@ -100,19 +109,72 @@ async function deleteSelected(){
  clearSelection();load(currentPath);
 }
 async function doUpload(){
- var fi=document.getElementById('fi');if(!fi||!fi.files.length)return;
- var total=fi.files.length,ok=0,fail=0;
- for(var i=0;i<fi.files.length;i++){
-  var f=fi.files[i];
-  var fd=new FormData();fd.append('file',f);
-  try{
-   var r=await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'POST',body:fd});
-   if(r.ok){ok++}else{fail++}
-  }catch(x){fail++}
- }
- fi.value='';
- showToast('上传完成: '+(total-fail)+'/'+total+' 成功'+(fail>0?' ('+fail+' 失败)':''));
- load(currentPath);
+var fi=document.getElementById('fi');if(!fi||!fi.files.length)return;
+var total=fi.files.length,ok=0,fail=0;
+showToast('开始上传 '+total+' 个文件');
+for(var i=0;i<fi.files.length;i++){
+var f=fi.files[i];
+var done=await uploadOne(f,i+1,total);
+if(done){ok++}else{fail++}
+}
+fi.value='';
+hideProg();
+showToast('上传完成: '+(total-fail)+'/'+total+' 成功'+(fail>0?' ('+fail+' 失败)':''));
+load(currentPath);
+}
+function uploadOne(f,idx,total){
+return new Promise(function(resolve){
+var xhr=new XMLHttpRequest();
+var fd=new FormData();fd.append('file',f);
+xhr.open('POST','/api/upload?name='+encodeURIComponent(f.name));
+// 阶段1：网络传输进度（浏览器→手机），只记录，不直接改进度条
+xhr.upload.onprogress=function(e){
+if(e.lengthComputable){
+var pct=Math.round(e.loaded/e.total*100);
+upSent=pct;upTotal=e.total;renderUp(f.name);
+}
+};
+// 阶段2：响应返回 = 服务端已完整落盘
+xhr.onload=function(){
+var ok=xhr.status>=200&&xhr.status<300;
+if(ok){
+try{var j=JSON.parse(xhr.responseText);
+if(j&&j.size)showSaveDone(f.name,j.size);
+}catch(x){}
+}
+upSent=100;renderUp(f.name);
+resolve(ok);
+};
+xhr.onerror=function(){resolve(false)};
+xhr.send(fd);
+});
+}
+// ── 双进度状态：upSent=网络传输%，upSaved=服务器保存%（WS推送）──
+var upSent=0,upSaved=0,upTotal=0,upBytes=0;
+function renderUp(name){
+var pct=upSaved;
+var txt='📤 网络已传 '+(upSent>=100?'完成':upSent+'%')+' | 💾 服务器保存 '+pct+'% ('+fmtSize(upBytes)+(upTotal>0?' / '+fmtSize(upTotal):'')+')';
+showProg(txt,pct);
+}
+function showProg(txt,pct){
+var p=document.getElementById('upProg'),b=document.getElementById('upBar'),t=document.getElementById('upText');
+if(p)p.style.display='flex';
+if(b)b.style.width=pct+'%';
+if(t)t.textContent=txt;
+}
+// 服务端写盘进度（WebSocket 推送的真实保存进度）
+function showSaveProg(name,written,total){
+upSaved=total>0?Math.min(99,Math.round(written/total*100)):0;
+upBytes=written;if(total>0)upTotal=total;
+renderUp(name);
+}
+function showSaveDone(name,size){
+upSaved=100;upBytes=size;upSent=100;
+showProg('✅ 已保存 '+name+' ('+fmtSize(size)+')',100);
+}
+function hideProg(){
+var p=document.getElementById('upProg');
+if(p)p.style.display='none';
 }
 function sendClip(){var v=document.getElementById('clipIn').value.trim();if(!v||!ws||ws.readyState!==1)return;ws.send('clipboard:'+v);document.getElementById('clipIn').value='';showToast('已发送')}
 function getClip(){if(ws&&ws.readyState===1)ws.send('get_clipboard')}

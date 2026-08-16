@@ -98,7 +98,7 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             MaterialTheme.colorScheme.onTertiaryContainer) {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/linlinya520/ShareKu")))
                         }
-                    AboutChip(R.drawable.ic_version_chip, "v1.1.3", "当前版本",
+                    AboutChip(R.drawable.ic_version_chip, "v1.2.0", "当前版本",
                         MaterialTheme.colorScheme.secondaryContainer,
                         MaterialTheme.colorScheme.onSecondaryContainer) { onChangelog() }
                     AboutChip(R.drawable.ic_license_chip, "GPL-3.0", "开源协议",

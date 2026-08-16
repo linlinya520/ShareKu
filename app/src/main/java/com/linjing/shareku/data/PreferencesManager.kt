@@ -16,6 +16,7 @@ private val Context.dataStore by preferencesDataStore(name = "shareku_prefs")
 class PreferencesManager(private val context: Context) {
 
     val port: Flow<Int> = context.dataStore.data.map { it[KEY_PORT] ?: 8080 }
+    val sharePort: Flow<Int> = context.dataStore.data.map { it[KEY_SHARE_PORT] ?: 8085 }
     val enableWebDav: Flow<Boolean> = context.dataStore.data.map { it[KEY_WEBDAV] ?: true }
     val enableAuth: Flow<Boolean> = context.dataStore.data.map { it[KEY_AUTH] ?: false }
     val authUsername: Flow<String> = context.dataStore.data.map { it[KEY_AUTH_USER] ?: "shareku" }
@@ -49,6 +50,7 @@ class PreferencesManager(private val context: Context) {
     }
 
     suspend fun setPort(port: Int) { context.dataStore.edit { it[KEY_PORT] = port } }
+    suspend fun setSharePort(port: Int) { context.dataStore.edit { it[KEY_SHARE_PORT] = port } }
     suspend fun setEnableWebDav(value: Boolean) { context.dataStore.edit { it[KEY_WEBDAV] = value } }
     suspend fun setEnableAuth(value: Boolean) { context.dataStore.edit { it[KEY_AUTH] = value } }
     suspend fun setAuthUsername(value: String) { context.dataStore.edit { it[KEY_AUTH_USER] = value } }
@@ -70,7 +72,8 @@ class PreferencesManager(private val context: Context) {
 
     companion object {
         private val KEY_PORT = intPreferencesKey("port")
-        private val KEY_WEBDAV = booleanPreferencesKey("webdav")
+    private val KEY_SHARE_PORT = intPreferencesKey("share_port")
+    private val KEY_WEBDAV = booleanPreferencesKey("webdav")
         private val KEY_AUTH = booleanPreferencesKey("auth")
         private val KEY_AUTH_USER = stringPreferencesKey("auth_user")
         private val KEY_AUTH_PASS = stringPreferencesKey("auth_pass")

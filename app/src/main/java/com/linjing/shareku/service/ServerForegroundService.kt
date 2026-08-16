@@ -53,8 +53,6 @@ class ServerForegroundService : Service() {
         const val ACTION_STOP = "com.material.localshare.action.STOP_SERVER"
         const val ACTION_APPROVE = "com.material.localshare.action.APPROVE_IP"
         const val ACTION_DENY = "com.material.localshare.action.DENY_IP"
-        const val ACTION_APPROVE_TRANSFER = "com.material.localshare.action.APPROVE_TRANSFER"
-        const val ACTION_REJECT_TRANSFER = "com.material.localshare.action.REJECT_TRANSFER"
         const val EXTRA_HOST = "extra_host"
         const val EXTRA_PORT = "extra_port"
         const val EXTRA_FILES = "extra_files"
@@ -69,8 +67,6 @@ class ServerForegroundService : Service() {
         const val EXTRA_CONFIRM = "extra_confirm"
         const val EXTRA_CONFIRM_IP = "extra_confirm_ip"
         const val EXTRA_UPLOAD_DIR = "extra_upload_dir"
-        const val EXTRA_TRANSFER_FILE = "extra_transfer_file"
-        const val EXTRA_TRANSFER_DEST = "extra_transfer_dest"
         const val NOTIFICATION_ID = 1001
         const val NOTIFY_CONFIRM_ID = 1002
         const val NOTIFY_TRANSFER_ID = 1003
@@ -123,36 +119,6 @@ class ServerForegroundService : Service() {
                 AppSingletons.dequeuePendingIp()
                 cancelConfirmNotification()
             }
-            ACTION_APPROVE_TRANSFER -> {
-                val tempPath = intent.getStringExtra(EXTRA_TRANSFER_FILE) ?: return START_NOT_STICKY
-                val destDir = intent.getStringExtra(EXTRA_TRANSFER_DEST) ?: return START_NOT_STICKY
-                serviceScope.launch {
-                    val tempFile = File(tempPath)
-                    if (tempFile.exists()) {
-                        val destFile = File(destDir, tempFile.name.replaceFirst(Regex("^\\d+_"), ""))
-                        var counter = 1
-                        var finalDest = destFile
-                        while (finalDest.exists()) {
-                            val dot = destFile.name.lastIndexOf('.')
-                            val base = if (dot > 0) destFile.name.substring(0, dot) else destFile.name
-                            val ext = if (dot > 0) destFile.name.substring(dot) else ""
-                            finalDest = File(destDir, "${base}_${counter}${ext}")
-                            counter++
-                        }
-                        tempFile.copyTo(finalDest, overwrite = true)
-                        tempFile.delete()
-                    }
-                    cancelTransferNotification()
-                }
-            }
-            ACTION_REJECT_TRANSFER -> {
-                val tempPath = intent.getStringExtra(EXTRA_TRANSFER_FILE) ?: return START_NOT_STICKY
-                serviceScope.launch {
-                    val tempFile = File(tempPath)
-                    if (tempFile.exists()) tempFile.delete()
-                    cancelTransferNotification()
-                }
-            }
         }
         return START_STICKY
     }
@@ -164,8 +130,22 @@ class ServerForegroundService : Service() {
         webdav: Boolean, confirm: Boolean, uploadDir: File?, receiveDir: String
     ) {
         val notification = createNotification(host, port)
+        // 仅当用户开启定位保活且已授予定位权限时才附加 location 类型，
+        // 否则 Android 14+ (targetSdk 35) 会因缺少运行时权限抛 SecurityException 闪退
+        val keepAliveOn = runBlocking { AppSingletons.preferencesManager.enableLocationKeepAlive.first() }
+        val hasLocationPerm = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            val fgsType = if (keepAliveOn && hasLocationPerm)
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            else
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            try {
+                startForeground(NOTIFICATION_ID, notification, fgsType)
+            } catch (_: SecurityException) {
+                // 后台启动 location 类型被拒 → 降级为纯 dataSync（保活用 NETWORK_PROVIDER 不依赖该类型）
+                startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            }
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -197,7 +177,18 @@ class ServerForegroundService : Service() {
                     },
                     onPeerTransfer = { senderIp, fileName, fileSize, tempFile ->
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            showTransferNotification(senderIp, fileName, fileSize, tempFile)
+                            // 局域网直连：不再询问，直接保存到接收目录
+                            val destDir = (server?.receiveDir ?: File(getExternalFilesDir(null), "ShareKu"))
+                                .also { if (!it.exists()) it.mkdirs() }.absolutePath
+                            serviceScope.launch {
+                                approveTransfer(tempFile.absolutePath, destDir, fileName)
+                            }
+                        }
+                    },
+                    onPeerReceiveProgress = { name, received, total ->
+                        // 写盘进度 → 通知栏进度条（接收端可见传输进度）
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            showTransferProgress(name, received, total)
                         }
                     }
                 )
@@ -205,6 +196,12 @@ class ServerForegroundService : Service() {
                 var actualPort = port
                 var engine: io.ktor.server.engine.EmbeddedServer<*, *>? = null
                 val srv = server ?: return@launch
+                // 受限目录但 Shizuku 未授权 → 提示（网页端将无法访问）
+                srv.restrictedAccessWarning?.let { warn ->
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(this@ServerForegroundService, warn, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
                 for (attempt in 0 until 10) {
                     try {
                         engine = srv.start(host, actualPort)
@@ -276,52 +273,82 @@ class ServerForegroundService : Service() {
         nm.cancel(NOTIFY_CONFIRM_ID)
     }
 
-    // ═══ 传输审批通知 ═══
-    private var transferDestDir: String = ""
-    private var transferTempFile: String = ""
-
-    private fun showTransferNotification(senderIp: String, fileName: String, fileSize: Long, tempFile: File) {
-        transferDestDir = (server?.receiveDir ?: File(getExternalFilesDir(null), "ShareKu")).also { if (!it.exists()) it.mkdirs() }.absolutePath
-        transferTempFile = tempFile.absolutePath
-
+    // ═══ 直连接收进度通知（接收端可见传输进度条） ═══
+    private fun showTransferProgress(fileName: String, received: Long, total: Long) {
+        val pct = if (total > 0) ((received * 100) / total).toInt().coerceIn(0, 100) else 0
         val sizeStr = when {
-            fileSize < 1024 -> "${fileSize}B"
-            fileSize < 1024 * 1024 -> "${fileSize / 1024}KB"
-            else -> "${"%.1f".format(fileSize.toDouble() / (1024 * 1024))}MB"
+            received < 1024 -> "${received}B"
+            received < 1024 * 1024 -> "${received / 1024}KB"
+            else -> "${"%.1f".format(received.toDouble() / (1024 * 1024))}MB"
         }
-        val approveIntent = PendingIntent.getService(
-            this, ("TA" + senderIp).hashCode() and 0xFFFF,
-            Intent(this, ServerForegroundService::class.java).apply {
-                action = ACTION_APPROVE_TRANSFER
-                putExtra(EXTRA_TRANSFER_FILE, transferTempFile)
-                putExtra(EXTRA_TRANSFER_DEST, transferDestDir)
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val rejectIntent = PendingIntent.getService(
-            this, ("TR" + senderIp).hashCode() and 0xFFFF,
-            Intent(this, ServerForegroundService::class.java).apply {
-                action = ACTION_REJECT_TRANSFER
-                putExtra(EXTRA_TRANSFER_FILE, transferTempFile)
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val notify = NotificationCompat.Builder(this, ShareKuApp.CHANNEL_CONFIRM)
-            .setContentTitle("文件传输请求")
-            .setContentText("$senderIp 发送: $fileName ($sizeStr)")
+        val totalStr = when {
+            total < 1024 -> "${total}B"
+            total < 1024 * 1024 -> "${total / 1024}KB"
+            else -> "${"%.1f".format(total.toDouble() / (1024 * 1024))}MB"
+        }
+        val notify = NotificationCompat.Builder(this, ShareKuApp.CHANNEL_SERVER)
+            .setContentTitle("📥 正在接收 $fileName")
+            .setContentText("$sizeStr / $totalStr ($pct%)")
             .setSmallIcon(android.R.drawable.ic_menu_save)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .addAction(android.R.drawable.ic_input_add, "接受", approveIntent)
-            .addAction(android.R.drawable.ic_delete, "拒绝", rejectIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOnlyAlertOnce(true)
+            .setProgress(100, pct, total <= 0)
             .build()
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFY_TRANSFER_ID, notify)
     }
 
-    private fun cancelTransferNotification() {
+    // ═══ 传输保存核心逻辑（直接保存，不再询问） ═══
+    private suspend fun approveTransfer(tempPath: String, destDir: String, fileName: String) {
+        val tempFile = File(tempPath)
+        if (!tempFile.exists()) return
+        try {
+            val destFile = File(destDir, tempFile.name.replaceFirst(Regex("^\\d+_"), ""))
+            var counter = 1
+            var finalDest = destFile
+            while (finalDest.exists()) {
+                val dot = destFile.name.lastIndexOf('.')
+                val base = if (dot > 0) destFile.name.substring(0, dot) else destFile.name
+                val ext = if (dot > 0) destFile.name.substring(dot) else ""
+                finalDest = File(destDir, "${base}_${counter}${ext}")
+                counter++
+            }
+            tempFile.copyTo(finalDest, overwrite = true)
+            tempFile.delete()
+            // 保存完成 → 进度通知变完成通知（100%）
+            showTransferDone(fileName, finalDest.absolutePath)
+        } catch (e: Exception) {
+            // 目标目录不可写（缺少存储权限等）→ 回退到应用外部目录，不崩溃
+            try {
+                val fallbackDir = File(getExternalFilesDir(null), "ShareKu")
+                if (!fallbackDir.exists()) fallbackDir.mkdirs()
+                val fallback = File(fallbackDir, tempFile.name.replaceFirst(Regex("^\\d+_"), ""))
+                tempFile.copyTo(fallback, overwrite = true)
+                tempFile.delete()
+                showTransferDone(fileName, fallback.absolutePath)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(
+                        this@ServerForegroundService,
+                        "存储权限不足，文件已保存到应用目录：$fallback",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e2: Exception) {
+                android.util.Log.e("ShareKu", "Save transfer failed", e2)
+            }
+        }
+    }
+
+    private fun showTransferDone(fileName: String, savedPath: String) {
+        val notify = NotificationCompat.Builder(this, ShareKuApp.CHANNEL_CONFIRM)
+            .setContentTitle("✅ 已接收 $fileName")
+            .setContentText("已保存到 $savedPath")
+            .setSmallIcon(android.R.drawable.ic_menu_save)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.cancel(NOTIFY_TRANSFER_ID)
+        nm.notify(NOTIFY_TRANSFER_ID, notify)
     }
 
     // ═══ 后台定位保活 (鸿蒙/国产ROM防断网) ═══

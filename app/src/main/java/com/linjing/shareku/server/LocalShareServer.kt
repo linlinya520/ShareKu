@@ -2,11 +2,16 @@ package com.linjing.shareku.server
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.Bundle
 import com.linjing.shareku.data.LogEntry
 import com.linjing.shareku.data.LogManager
+import com.linjing.shareku.data.ShizukuEntry
+import com.linjing.shareku.data.ShizukuFileManager
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
@@ -20,6 +25,7 @@ import io.ktor.server.plugins.conditionalheaders.ConditionalHeaders
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.partialcontent.PartialContent
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.contentType
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.request.receiveMultipart
@@ -40,14 +46,20 @@ import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
+import io.ktor.websocket.WebSocketSession
 import io.ktor.utils.io.jvm.javaio.toByteReadChannel
 import io.ktor.utils.io.readAvailable
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.CopyOnWriteArraySet
 import java.io.FileInputStream
 import java.net.URLDecoder
 import java.nio.file.Files as JavaFiles
@@ -76,15 +88,55 @@ class ShareKuServer(
     // 连接确认回调：当新IP需要审批时调用，传入IP地址
     val onNewConnection: ((String) -> Unit)? = null,
     // 直连传输请求回调：发送端IP + 文件名 + 大小 + 临时文件路径
-    val onPeerTransfer: ((senderIp: String, fileName: String, fileSize: Long, tempFile: File) -> Unit)? = null
+    val onPeerTransfer: ((senderIp: String, fileName: String, fileSize: Long, tempFile: File) -> Unit)? = null,
+    // 直连传输接收进度回调（写盘循环中调用，用于接收端进度条/通知）
+    val onPeerReceiveProgress: ((fileName: String, received: Long, total: Long) -> Unit)? = null
 ) {
     private val _logChannel = Channel<LogEntry>(Channel.UNLIMITED)
     private val _clipboardState = MutableStateFlow("")
+    // WebSocket 客户端集合，用于广播上传/写盘进度
+    private val wsClients = CopyOnWriteArraySet<WebSocketSession>()
+    // 独立协程用于异步广播，绝不阻塞上传写盘循环
+    private val broadcastScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 异步向所有已连接的网页端广播消息（不阻塞调用方） */
+    private fun broadcastAsync(message: String) {
+        broadcastScope.launch {
+            wsClients.forEach { session ->
+                try { session.send(message) } catch (_: Exception) { wsClients.remove(session) }
+            }
+        }
+    }
 
     // IP 连接确认白名单/黑名单/待审批集合
     val approvedIps = mutableSetOf<String>()
     val blockedIps = mutableSetOf<String>()
     val pendingIps = mutableSetOf<String>()
+
+    // ═══ Shizuku 受限目录访问 ═══
+    // 共享根目录（用于判断是否受限）
+    private val accessRootPath: String = sharedFiles.firstOrNull()?.let {
+        if (it.isDirectory) it.absolutePath else it.parentFile?.absolutePath
+    } ?: ""
+
+    /** 共享根目录是否受限（普通 File API 无法访问，如 Android/data/obb） */
+    private val isRestrictedRoot: Boolean by lazy {
+        val root = File(accessRootPath)
+        !(root.exists() && root.canRead() && root.listFiles() != null)
+    }
+
+    /** 受限目录访问是否可用（受限 + Shizuku 已授权） */
+    private val shizukuAccessReady: Boolean by lazy {
+        isRestrictedRoot && ShizukuFileManager.isAvailable() && ShizukuFileManager.hasPermission()
+    }
+
+    /** 共享根受限但 Shizuku 未就绪时的提示（网页端将无法访问该目录） */
+    val restrictedAccessWarning: String?
+        get() = if (isRestrictedRoot && !shizukuAccessReady) {
+            "共享目录为受限目录（如 Android/data），未授权 Shizuku 时网页端将无法访问"
+        } else {
+            null
+        }
 
     fun start(
         host: String,
@@ -136,9 +188,10 @@ class ShareKuServer(
             }
 
             // WebSocket for real-time logs & clipboard sync
-            webSocket("/ws") {
-                try {
-                    for (frame in incoming) {
+    webSocket("/ws") {
+        wsClients.add(this)
+        try {
+            for (frame in incoming) {
                         if (frame is Frame.Text) {
                             val text = frame.readText()
                             when {
@@ -159,6 +212,8 @@ class ShareKuServer(
                     }
                 } catch (e: Exception) {
                     // Client disconnected
+                } finally {
+                    wsClients.remove(this)
                 }
             }
 
@@ -173,20 +228,30 @@ class ShareKuServer(
                 try {
                     val rawName = call.request.queryParameters["name"] ?: "received_${System.currentTimeMillis()}"
                     val origName = rawName.replace(":", "_").replace("/", "_").replace("\\", "_")
-                        .replace(Regex("[^a-zA-Z0-9._\\-]"), "_")
+                        // 只过滤文件系统非法字符，保留中文等 Unicode 字符
+                        .replace(Regex("[/\\\\:*?\"<>|\\u0000-\\u001F]"), "_")
                     // Save to temp file first, then request approval
                     val tempDir = File(context.cacheDir, "peer_pending")
                     if (!tempDir.exists()) tempDir.mkdirs()
                     val tempFile = File(tempDir, "${System.currentTimeMillis()}_$origName")
-                    val channel = call.request.receiveChannel()
-                    tempFile.outputStream().use { fos ->
-                        val buf = ByteArray(32768)
-                        while (!channel.isClosedForRead) {
-                            val r = channel.readAvailable(buf, 0, buf.size)
-                            if (r <= 0) break
-                            fos.write(buf, 0, r)
-                        }
-                    }
+val channel = call.request.receiveChannel()
+val totalHint = call.request.header(HttpHeaders.ContentLength)?.toLongOrNull() ?: 0L
+tempFile.outputStream().use { fos ->
+val buf = ByteArray(32768)
+var written = 0L
+var lastReport = 0L
+while (!channel.isClosedForRead) {
+val r = channel.readAvailable(buf, 0, buf.size)
+if (r <= 0) break
+fos.write(buf, 0, r)
+written += r
+// 每 ~1MB 上报一次接收进度（接收端通知栏进度条）
+if (written - lastReport >= 1024 * 1024 || r <= 0) {
+lastReport = written
+onPeerReceiveProgress?.invoke(origName, written, totalHint)
+}
+}
+}
                     val finalDest = File(destDir, origName)
                     // Notify callback on main thread → shows approval notification
                     val senderIp = call.request.local.remoteHost
@@ -201,10 +266,28 @@ class ShareKuServer(
                 }
             }
             get("/api/clipboard") {
+                if (!checkIp(call)) return@get
+                if (!checkAuth(call)) { call.respondText("""{"error":"Unauthorized"}""", status = HttpStatusCode.Unauthorized); return@get }
                 val clip = clipboardManager?.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
                 call.respondText("""{"text":"${clip.replace("\"","\\\"")}"}""", ContentType.Application.Json)
             }
             get("/api/files") {
+                if (!checkIp(call)) return@get
+                if (!checkAuth(call)) { call.respondText("""{"error":"Unauthorized"}""", status = HttpStatusCode.Unauthorized); return@get }
+                if (shizukuAccessReady) {
+                    // 受限目录：共享根信息通过 Shizuku 获取
+                    val rootFile = sharedFiles.firstOrNull()
+                    val rootStat = rootFile?.let { ShizukuFileManager.stat(context, it.absolutePath) }
+                    val entries = if (rootFile != null && rootStat != null && rootStat.getBoolean("isDirectory")) {
+                        ShizukuFileManager.listDirectory(context, rootFile.absolutePath)?.map { shizukuToJson(it) } ?: emptyList()
+                    } else if (rootFile != null && rootStat != null) {
+                        listOf(shizukuStatToJson(rootFile, rootStat))
+                    } else {
+                        emptyList()
+                    }
+                    call.respondText(buildFileListJson(entries), ContentType.Application.Json)
+                    return@get
+                }
                 call.respondText(
                     buildFileListJson(sharedFiles.map { fileToJson(it) }),
                     ContentType.Application.Json
@@ -223,6 +306,29 @@ class ShareKuServer(
                 if (!checkAuth(call)) { call.respondText("Unauthorized", status = HttpStatusCode.Unauthorized); return@get }
                 val reqPath = call.request.queryParameters["path"] ?: ""
                 val file = resolvePath(reqPath)
+                if (shizukuAccessReady) {
+                    // 受限目录（Android/data 等）：通过 Shizuku 读取
+                    val st = file?.let { ShizukuFileManager.stat(context, it.absolutePath) }
+                    if (file != null && st != null && !st.getBoolean("isDirectory") && isAllowed(file)) {
+                        val size = st.getLong("size")
+                        logRequest(call, 200, size)
+                        call.response.headers.append(HttpHeaders.ContentDisposition, "attachment; filename=\"${file.name}\"")
+                        call.response.headers.append(HttpHeaders.ContentType, guessContentType(file).toString())
+                        call.respondOutputStream(ContentType.Application.OctetStream, HttpStatusCode.OK) {
+                            var offset = 0L
+                            while (offset < size) {
+                                val chunk = ShizukuFileManager.readFile(context, file.absolutePath, offset, 512 * 1024) ?: break
+                                if (chunk.isEmpty()) break
+                                write(chunk)
+                                offset += chunk.size
+                            }
+                        }
+                    } else {
+                        logRequest(call, 404)
+                        call.respondText("404 Not Found", status = HttpStatusCode.NotFound)
+                    }
+                    return@get
+                }
                 if (file != null && file.exists() && file.isFile && isAllowed(file)) {
                     logRequest(call, 200, file.length())
                     call.response.headers.append(HttpHeaders.ContentDisposition, "attachment; filename=\"${file.name}\"")
@@ -238,6 +344,28 @@ class ShareKuServer(
                 if (!checkAuth(call)) { call.respondText("""{"error":"Unauthorized"}""", status = HttpStatusCode.Unauthorized); return@get }
                 val reqPath = call.request.queryParameters["path"] ?: ""
                 val dir = resolvePath(reqPath)
+                if (shizukuAccessReady) {
+                    // 受限目录：通过 Shizuku 列目录
+                    val st = dir?.let { ShizukuFileManager.stat(context, it.absolutePath) }
+                    if (dir != null && st != null && isAllowed(dir)) {
+                        if (st.getBoolean("isDirectory")) {
+                            val list = ShizukuFileManager.listDirectory(context, dir.absolutePath)
+                            if (list != null) {
+                                logRequest(call, 200)
+                                call.respondText(buildFileListJson(list.map { shizukuToJson(it) }), ContentType.Application.Json)
+                                return@get
+                            }
+                        } else {
+                            logRequest(call, 200)
+                            call.respondText(buildFileListJson(listOf(shizukuStatToJson(dir, st))), ContentType.Application.Json)
+                            return@get
+                        }
+                    }
+                    logRequest(call, 404)
+                    val dbg = if (dir == null) "null" else "stat=${st != null}"
+                    call.respondText("""{"error":"404","debug":"$dbg","path":"$reqPath"}""", status = HttpStatusCode.NotFound)
+                    return@get
+                }
                 if (dir != null && dir.isDirectory && isAllowed(dir)) {
                     val files = dir.listFiles()?.map { fileToJson(it) }
                     logRequest(call, 200)
@@ -253,6 +381,7 @@ class ShareKuServer(
             }
             get("/api/zip") {
                 if (!checkIp(call)) return@get
+                if (!checkAuth(call)) { call.respondText("""{"error":"Unauthorized"}""", status = HttpStatusCode.Unauthorized); return@get }
                 val paths = call.request.queryParameters.getAll("paths") ?: emptyList()
                 val counter = AtomicLong(0)
                 val byteCounter = AtomicLong(0)
@@ -283,29 +412,81 @@ class ShareKuServer(
                     }
                     val queryName = call.request.queryParameters["name"]
                     try {
-                        val channel = call.request.receiveChannel()
-                        val origName = (queryName ?: "upload_${System.currentTimeMillis()}")
-                            .let { URLDecoder.decode(it, "UTF-8") }
-                            .replace("/", "_").replace("\\", "_")
-                        var dest = File(root, origName)
-                        var counter = 1
-                        while (dest.exists()) {
-                            val dot = origName.lastIndexOf('.')
-                            val base = if (dot > 0) origName.substring(0, dot) else origName
-                            val ext = if (dot > 0) origName.substring(dot) else ""
-                            dest = File(root, "${base}_${counter}${ext}")
-                            counter++
-                        }
-                        dest.outputStream().use { fos ->
-                            val buf = ByteArray(32768)
-                            while (!channel.isClosedForRead) {
-                                val r = channel.readAvailable(buf, 0, buf.size)
-                                if (r <= 0) break
-                                fos.write(buf, 0, r)
+                        val isMultipart = call.request.contentType().toString().startsWith("multipart/")
+                        if (isMultipart) {
+                            // 网页 FormData 上传：正确解析 multipart（流式，支持大文件）
+                            val multipart = call.receiveMultipart()
+                            var saved = 0
+                            var savedName = ""
+                            var savedSize = 0L
+                            val totalHint = call.request.header(HttpHeaders.ContentLength)?.toLongOrNull() ?: 0L
+                            multipart.forEachPart { part ->
+                                if (part is PartData.FileItem) {
+                                    val rawName = part.originalFileName ?: queryName ?: "upload_${System.currentTimeMillis()}"
+                                    val origName = URLDecoder.decode(rawName, "UTF-8")
+                                        .replace("/", "_").replace("\\", "_")
+                                    var dest = File(root, origName)
+                                    var counter = 1
+                                    while (dest.exists()) {
+                                        val dot = origName.lastIndexOf('.')
+                                        val base = if (dot > 0) origName.substring(0, dot) else origName
+                                        val ext = if (dot > 0) origName.substring(dot) else ""
+                                        dest = File(root, "${base}_${counter}${ext}")
+                                        counter++
+                                    }
+                                    // 流式写入，内存占用恒定；每 1MB 异步广播一次真实写盘进度（不阻塞写盘）
+                                    var written = 0L
+                                    var lastBroadcast = 0L
+                                    dest.outputStream().use { fos ->
+                                        val buf = ByteArray(65536)
+                                        val ch = part.provider()
+                                        while (true) {
+                                            val r = ch.readAvailable(buf, 0, buf.size)
+                                            if (r <= 0) break
+                                            fos.write(buf, 0, r)
+                                            written += r
+                                            if (written - lastBroadcast >= 1024 * 1024) {
+                                                lastBroadcast = written
+                                                broadcastAsync("""{"type":"up","name":"${dest.name.replace("\"", "\\\"")}","written":$written,"total":$totalHint}""")
+                                            }
+                                        }
+                                    }
+                                    // 写盘完成，广播真实保存大小
+                                    broadcastAsync("""{"type":"up_done","name":"${dest.name.replace("\"", "\\\"")}","size":${dest.length()}}""")
+                                    saved = 1
+                                    savedName = dest.name
+                                    savedSize = dest.length()
+                                }
+                                part.dispose()
                             }
+                            logRequest(call, 200, savedSize)
+                            call.respondText("""{"uploaded":$saved,"name":"$savedName","size":$savedSize}""", ContentType.Application.Json)
+                        } else {
+                            // 兼容 raw 字节流上传（curl/脚本等）
+                            val channel = call.request.receiveChannel()
+                            val origName = (queryName ?: "upload_${System.currentTimeMillis()}")
+                                .let { URLDecoder.decode(it, "UTF-8") }
+                                .replace("/", "_").replace("\\", "_")
+                            var dest = File(root, origName)
+                            var counter = 1
+                            while (dest.exists()) {
+                                val dot = origName.lastIndexOf('.')
+                                val base = if (dot > 0) origName.substring(0, dot) else origName
+                                val ext = if (dot > 0) origName.substring(dot) else ""
+                                dest = File(root, "${base}_${counter}${ext}")
+                                counter++
+                            }
+                            dest.outputStream().use { fos ->
+                                val buf = ByteArray(32768)
+                                while (!channel.isClosedForRead) {
+                                    val r = channel.readAvailable(buf, 0, buf.size)
+                                    if (r <= 0) break
+                                    fos.write(buf, 0, r)
+                                }
+                            }
+                            logRequest(call, 200, dest.length())
+                            call.respondText("""{"uploaded":1,"name":"${dest.name}","size":${dest.length()}}""", ContentType.Application.Json)
                         }
-                        logRequest(call, 200, dest.length())
-                        call.respondText("""{"uploaded":1,"name":"${dest.name}","size":${dest.length()}}""", ContentType.Application.Json)
                     } catch (e: Exception) {
                         logRequest(call, 500)
                         call.respondText("""{"error":"${e.message}"}""", status = HttpStatusCode.InternalServerError)
@@ -370,8 +551,9 @@ class ShareKuServer(
         if (decoded.isEmpty()) return root
         val target = File(root, decoded)
         // 路径穿越检查：标准化路径后必须仍在根目录内
-        val rootCanonical = root.canonicalPath
-        val targetCanonical = target.canonicalFile.canonicalPath
+        // 受限目录（Android/data 等）下 canonicalFile 可能抛异常 → 降级为绝对路径比较
+        val rootCanonical = try { root.canonicalPath } catch (e: Exception) { root.absolutePath }
+        val targetCanonical = try { target.canonicalFile.canonicalPath } catch (e: Exception) { target.absolutePath }
         if (!targetCanonical.startsWith(rootCanonical + "/") && targetCanonical != rootCanonical) {
             return null // 拒绝路径穿越
         }
@@ -393,7 +575,9 @@ class ShareKuServer(
     // 获取共享根目录，用于计算相对路径
     private fun getRootDir(): File? {
         val first = sharedFiles.firstOrNull() ?: return null
-        return if (first.isDirectory) first else first.parentFile
+        // 受限目录（Android/data 等）在沙箱下 File.isDirectory() 可能误判为 false，
+        // 此时必须以共享项本身作为根，否则路径基准错乱
+        return if (first.isDirectory || shizukuAccessReady) first else first.parentFile
     }
 
     // 手动 HTTP Basic Auth 验证 —— 参考网页文件挂载器的实现
@@ -519,6 +703,40 @@ p{font-size:14px;color:#636e72;line-height:1.5}
             "size" to file.length(),
             "isDirectory" to file.isDirectory,
             "lastModified" to file.lastModified(),
+            "mimeType" to guessMimeType(file.name)
+        )
+    }
+
+    // Shizuku 受限目录条目 → JSON（与 fileToJson 结构一致）
+    private fun shizukuToJson(e: ShizukuEntry): Map<String, Any?> {
+        val rel = if (accessRootPath.isNotEmpty() && e.path.startsWith(accessRootPath)) {
+            e.path.removePrefix(accessRootPath).trimStart('/')
+        } else {
+            e.path
+        }
+        return mapOf(
+            "name" to e.name,
+            "path" to rel,
+            "size" to e.size,
+            "isDirectory" to e.isDirectory,
+            "lastModified" to 0L,
+            "mimeType" to guessMimeType(e.name)
+        )
+    }
+
+    // Shizuku stat → 单文件 JSON
+    private fun shizukuStatToJson(file: File, st: Bundle): Map<String, Any?> {
+        val rel = if (accessRootPath.isNotEmpty() && file.absolutePath.startsWith(accessRootPath)) {
+            file.absolutePath.removePrefix(accessRootPath).trimStart('/')
+        } else {
+            file.absolutePath
+        }
+        return mapOf(
+            "name" to file.name,
+            "path" to rel,
+            "size" to st.getLong("size"),
+            "isDirectory" to st.getBoolean("isDirectory"),
+            "lastModified" to st.getLong("lastModified"),
             "mimeType" to guessMimeType(file.name)
         )
     }

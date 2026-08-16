@@ -18,7 +18,15 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
-    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+<uses-feature android:name="android.hardware.wifi" android:required="false" />
+
+    <!-- Android 11+ 包可见性：允许查询所有已安装应用（获取第三方应用图标） -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".ShareKuApp"
@@ -132,6 +140,15 @@
             android:enableOnBackInvokedCallback="true"
             android:exported="false"
             android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Shizuku Provider: 通过 Shizuku 以 shell 权限访问受限目录（需安装 Shizuku App） -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- Foreground Service for HTTP server -->
         <service

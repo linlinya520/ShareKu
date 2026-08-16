@@ -72,13 +72,29 @@ object CacheUtils {
         return context.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
     }
 
-    fun cleanCacheDir(context: Context): Int {
+    /**
+     * 递归清理缓存目录（含子目录），返回实际释放的字节数。
+     * - 跳过正在共享的文件（activeSharedFiles）
+     * - 保留 cacheDir 根目录本身（系统约定）
+     * - 删除失败（文件被占用）静默跳过，不中断
+     */
+    fun cleanCacheDir(context: Context): Long {
         val active = AppSingletons.activeSharedFiles.toSet()
-        var count = 0
-        context.cacheDir.listFiles()?.forEach { f ->
-            if (f.isFile && f.absolutePath !in active && f.delete()) count++
+        val root = context.cacheDir
+        var freed = 0L
+        // 自底向上遍历：先删深层文件/目录，最后处理浅层
+        root.walkTopDown().toList().asReversed().forEach { f ->
+            if (f == root) return@forEach // 保留根目录
+            if (f.absolutePath in active) return@forEach // 正在共享的文件不删
+            if (f.isFile) {
+                val len = f.length()
+                if (f.delete()) freed += len
+            } else {
+                // 空目录直接删；非空（有文件删不掉）会失败，忽略
+                f.delete()
+            }
         }
-        return count
+        return freed
     }
 
     fun formatSize(bytes: Long): String = when {

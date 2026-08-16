@@ -33,6 +33,16 @@ fun ChangelogScreen(onBack: () -> Unit) {
 
     val changelogs = remember {
         listOf(
+            ChangelogEntry("v1.2.0", "2026-08", listOf(
+                "Shizuku 高权限文件访问：可浏览并共享 /storage/emulated/0/Android/data 等受限目录（需安装并授权 Shizuku）",
+                "受限目录共享：选择 Android/data 等目录作为共享根后，网页端可真实列出并下载文件（Shizuku 模式下）",
+                "文件浏览器：Shizuku 模式显示对应包名的 App 图标角标，方便定位应用目录",
+                "分架构构建：按 x86 / x86_64 / arm64-v8a / armeabi-v7a 拆分为四个 APK，单包体积减小",
+                "文件浏览器性能优化：目录列表改为异步加载，滚动帧率显著提升",
+                "缓存清理修复：递归清理子目录缓存，显示真实释放大小",
+                "安全加固：/api/files、/api/zip、/api/clipboard 增加认证校验",
+                "启动服务器时对受限目录给出未授权 Shizuku 的明确提示",
+            )),
             ChangelogEntry("v1.1.3", "2026-08", listOf(
                 "🔍 设备直连传输：mDNS(NSD)自动发现附近设备，App间直接传文件，无需浏览器",
                 "📲 直连传输审批：接收端弹出通知，接受/拒绝后通知自动消失",

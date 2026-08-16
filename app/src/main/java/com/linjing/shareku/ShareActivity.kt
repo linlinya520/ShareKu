@@ -15,6 +15,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +41,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.linjing.shareku.peer.PeerDevice
+import com.linjing.shareku.peer.PeerDiscovery
+import com.linjing.shareku.peer.PeerTransferClient
+import com.linjing.shareku.peer.TransferProgress
 import com.linjing.shareku.server.NetworkUtils
 import com.linjing.shareku.service.ServerForegroundService
 import com.linjing.shareku.ui.component.CustomCard
@@ -76,14 +81,9 @@ class ShareActivity : ComponentActivity() {
         val networkUtils = NetworkUtils()
         val iface = networkUtils.getPreferredInterface("auto")
         val ip = iface?.ipAddress ?: "127.0.0.1"
-        val port = runBlocking { AppSingletons.preferencesManager.port.first() }
-        // If server already running (e.g. from main page), auto-offset to avoid conflict
-        val actualPort = if (AppSingletons.isServerRunning.value) {
-            var p = port + 1
-            while (!java.net.ServerSocket(p).use { true }) { p++ }
-            p
-        } else port
-        val url = "http://$ip:$actualPort"
+        // 分享界面使用独立的端口（默认 8085，与主页端口完全独立，互不影响）
+        val port = runBlocking { AppSingletons.preferencesManager.sharePort.first() }
+        val url = "http://$ip:$port"
         // 同步读取当前主题
         val initialTheme = runBlocking { AppSingletons.preferencesManager.themeMode.first() }
         setContent {
@@ -96,7 +96,7 @@ class ShareActivity : ComponentActivity() {
                     files = cacheFiles,
                     url = url,
                     ip = ip,
-                    port = actualPort,
+                    port = port,
                     onClose = {
                         stopServiceIfRunning()
                         cleanupCache()
@@ -110,6 +110,9 @@ class ShareActivity : ComponentActivity() {
                             files = cacheFiles,
                             singleFileSandbox = isSandbox
                         )
+                    },
+                    onStopSharing = {
+                        stopServiceIfRunning()
                     }
                 )
             }
@@ -224,6 +227,13 @@ class ShareActivity : ComponentActivity() {
                     serviceStarted = true
                 } catch (e: Exception) {
                     android.util.Log.e("ShareKu", "Share server failed", e)
+                    runOnUiThread {
+                        android.widget.Toast.makeText(
+                            this@ShareActivity,
+                            "端口 $port 启动失败：${e.message}",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             }
         } else {
@@ -244,15 +254,23 @@ class ShareActivity : ComponentActivity() {
     }
 
     private fun stopServiceIfRunning() {
-        directEngine?.stop(1000, 2000)
-        directEngine = null
-        if (!AppSingletons.isServerRunning.value || directEngine != null) {
-            // If we started a standalone server, stop it; otherwise stop the main service
+        // 独立分享服务器（主页服务在运行时走这里）→ 只停自己，不影响主页
+        directEngine?.let { engine ->
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try { engine.stop(1000, 2000) } catch (_: Exception) {}
+            }
+            directEngine = null
+            serviceStarted = false
+            return
         }
-        val intent = Intent(this, ServerForegroundService::class.java).apply {
-            action = ServerForegroundService.ACTION_STOP
+        // 走前台服务的情况：仅当分享自己启动过服务才停止（避免误关主页服务）
+        if (serviceStarted) {
+            val intent = Intent(this, ServerForegroundService::class.java).apply {
+                action = ServerForegroundService.ACTION_STOP
+            }
+            startService(intent)
+            serviceStarted = false
         }
-        startService(intent)
     }
 }
 
@@ -263,24 +281,79 @@ fun ShareSheetDialog(
     ip: String,
     port: Int,
     onClose: () -> Unit,
-    onStartSharing: (Int) -> Unit
+    onStartSharing: (Int) -> Unit,
+    onStopSharing: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val isServerRunning by AppSingletons.isServerRunning.collectAsState()
+    // 分享界面独立运行状态（与主页服务器互不影响）
+    var shareRunning by remember { mutableStateOf(false) }
     var showCopied by remember { mutableStateOf(false) }
 
-    // Port state — editable
+    // Port state — editable（写独立 sharePort，不影响主页端口）
     var currentPort by remember { mutableIntStateOf(port) }
     var showPortDialog by remember { mutableStateOf(false) }
     var portInput by remember { mutableStateOf(port.toString()) }
     val displayUrl = "http://$ip:$currentPort"
 
-    // Sync port when changed via dialog
+    // 修改分享端口只写独立配置，与主页端口互不影响
     LaunchedEffect(currentPort) {
-        AppSingletons.preferencesManager.setPort(currentPort)
+        AppSingletons.preferencesManager.setSharePort(currentPort)
+    }
+
+    // ═══ 设备直连发送状态 ═══
+    var showPeerPanel by remember { mutableStateOf(false) }
+    var peers by remember { mutableStateOf<List<PeerDevice>>(emptyList()) }
+    var peerScanning by remember { mutableStateOf(false) }
+    var peerSendProgress by remember { mutableStateOf<TransferProgress?>(null) }
+    var peerSendDone by remember { mutableStateOf(false) }
+    var peerSendError by remember { mutableStateOf<String?>(null) }
+    val peerDiscovery = remember { PeerDiscovery(context) }
+
+    // 展开面板时自动扫描，收起时停止
+    LaunchedEffect(showPeerPanel) {
+        if (showPeerPanel) {
+            peerScanning = true
+            peerDiscovery.startScan()
+            // 轮询扫描结果（PeerDiscovery 内部 StateFlow 更新）
+            while (true) {
+                kotlinx.coroutines.delay(500)
+                peers = peerDiscovery.peers.value
+                peerScanning = peerDiscovery.isScanning.value
+                if (!peerDiscovery.isScanning.value && peers.isEmpty()) break
+                if (peers.isNotEmpty()) break
+            }
+        } else {
+            peerDiscovery.stopScan()
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { peerDiscovery.stopScan() }
+    }
+
+    // 发送到指定设备
+    fun sendToPeer(peer: PeerDevice) {
+        peerSendProgress = null
+        peerSendDone = false
+        peerSendError = null
+        scope.launch {
+            val client = PeerTransferClient()
+            try {
+                client.sendFiles(files, peer.host, peer.port).collect { p ->
+                    peerSendProgress = p
+                    if (p.done) {
+                        peerSendDone = true
+                        peerSendProgress = null
+                    }
+                }
+            } catch (e: Exception) {
+                peerSendError = e.message ?: "发送失败"
+            } finally {
+                client.close()
+            }
+        }
     }
 
     Dialog(
@@ -358,7 +431,7 @@ fun ShareSheetDialog(
 
                 // QR Code — only visible when server is running
                 AnimatedVisibility(
-                    visible = isServerRunning,
+                    visible = shareRunning,
                     enter = scaleIn(
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -444,36 +517,142 @@ fun ShareSheetDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // 端口提示（与主页端口不同的建议）
+                if (!shareRunning) {
+                    Text(
+                        "注意：此界面端口建议与主页服务器端口不同，避免冲突",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // ═══ 设备直连发送 ═══
+                CustomCard(
+                    modifier = Modifier.fillMaxWidth(), cornerRadius = 16.dp,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    clickable = false, enableHaptic = false
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.DevicesOther, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("设备直连发送", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                showPeerPanel = !showPeerPanel
+                                if (!showPeerPanel) peerDiscovery.stopScan()
+                            }) {
+                                Text(if (showPeerPanel) "收起" else "选择设备")
+                            }
+                        }
+
+                        AnimatedVisibility(visible = showPeerPanel, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                            Column {
+                                Spacer(Modifier.height(4.dp))
+                                if (peerScanning && peers.isEmpty()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("正在扫描附近设备...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                if (peers.isEmpty() && !peerScanning) {
+                                    Text(
+                                        "未发现设备。请确认两台设备在同一 WiFi 下，且对方已启动服务器",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    TextButton(onClick = {
+                                        peerScanning = true
+                                        peerDiscovery.rescan()
+                                    }) { Text("重新扫描") }
+                                }
+                                peers.forEach { peer ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                                sendToPeer(peer)
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.PhoneAndroid, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(peer.displayName, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                            Text("${peer.host}:${peer.port}", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                                // 发送进度
+                                peerSendProgress?.let { prog ->
+                                    if (!prog.done) {
+                                        Spacer(Modifier.height(6.dp))
+                                        LinearProgressIndicator(
+                                            progress = { prog.percent / 100f },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Text(
+                                            "正在发送 ${prog.fileName} (${prog.fileIndex + 1}/${prog.totalFiles})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                if (peerSendDone) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("已发送到对方设备（对方确认后保存）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                peerSendError?.let {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("发送失败: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 // Start/Stop sharing button
                 Button(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        if (isServerRunning) {
-                            // Stop
-                            val intent = Intent(context, ServerForegroundService::class.java).apply {
-                                action = ServerForegroundService.ACTION_STOP
-                            }
-                            context.startService(intent)
-                            AppSingletons.setServerRunning(false)
+                        if (shareRunning) {
+                            // Stop —— 只停本分享服务器
+                            onStopSharing()
+                            shareRunning = false
                         } else {
                             // Start
                             onStartSharing(currentPort)
-                            AppSingletons.setServerRunning(true)
+                            shareRunning = true
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(26.dp),
-                    colors = if (isServerRunning) ButtonDefaults.buttonColors(
+                    colors = if (shareRunning) ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
                     ) else ButtonDefaults.buttonColors()
                 ) {
-                    if (isServerRunning) {
+                    if (shareRunning) {
                         Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                     }
                     Text(
-                        if (isServerRunning) "停止共享" else "启动共享",
+                        if (shareRunning) "停止共享" else "启动共享",
                         fontWeight = FontWeight.Bold
                     )
                 }

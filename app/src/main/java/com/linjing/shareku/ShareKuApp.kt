@@ -8,6 +8,13 @@ import android.os.Build
 class ShareKuApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // :shizuku 进程以 shell 身份运行，无法访问应用私有数据（DataStore），跳过 App 初始化
+        val procName = try {
+            android.os.Process.myProcessName()
+        } catch (e: Throwable) {
+            null
+        }
+        if (procName?.contains(":shizuku") == true) return
         AppSingletons.init(this)
         createNotificationChannels()
     }

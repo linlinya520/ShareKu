@@ -99,8 +99,13 @@ fun CacheCleanupScreen(onBack: () -> Unit) {
                     FilledTonalButton(onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         scope.launch {
-                            CacheUtils.cleanCacheDir(context)
+                            val freed = CacheUtils.cleanCacheDir(context)
                             cacheSizeBytes = CacheUtils.getCacheSize(context)
+                            android.widget.Toast.makeText(
+                                context,
+                                if (freed > 0) "已清理 ${CacheUtils.formatSize(freed)}" else "没有可清理的缓存",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                             showCleaned = true
                             kotlinx.coroutines.delay(2000)
                             showCleaned = false

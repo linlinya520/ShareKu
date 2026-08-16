@@ -12,12 +12,31 @@ android {
         applicationId = "com.linjing.shareku"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.1.3"
+        versionCode = 6
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    // 按 ABI 拆分 APK：x86 / x86_64 / arm64-v8a / armeabi-v7a 四包，减小单包体积
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("x86", "x86_64", "arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
+    }
+
+        signingConfigs {
+        create("release") {
+            storeFile = file("/root/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
@@ -28,7 +47,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -96,6 +115,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)
+
+    // Shizuku (高权限访问 /storage/emulated/0/Android/data 等受限目录)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
     // Ktor Client
     implementation(libs.ktor.client.core)

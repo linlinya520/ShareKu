@@ -24,3 +24,4 @@ setup_android_env.sh
 .operit/
 app/build/
 ShareKu-*.apk
+*.idsig

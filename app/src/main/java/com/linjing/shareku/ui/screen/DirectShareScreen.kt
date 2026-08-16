@@ -394,8 +394,8 @@ private fun uriToFile(context: android.content.Context, uri: Uri): File? {
         if (name == "file_${System.currentTimeMillis()}") {
             name = uri.lastPathSegment?.replace(":", "_")?.replace("/", "_") ?: name
         }
-        // Sanitize filename
-        name = name.replace(Regex("[^a-zA-Z0-9._\\-]"), "_")
+        // Sanitize filename — 只过滤文件系统非法字符，保留中文等 Unicode 字符
+    name = name.replace(Regex("[/\\\\:*?\"<>|\\u0000-\\u001F]"), "_")
         val cacheFile = java.io.File(context.cacheDir, name)
         context.contentResolver.openInputStream(uri)?.use { input ->
             cacheFile.outputStream().use { input.copyTo(it) }

@@ -72,6 +72,10 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
+# Shizuku (高权限文件访问)
+shizuku-api = { group = "dev.rikka.shizuku", name = "api", version = "13.1.5" }
+shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version = "13.1.5" }
+
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
