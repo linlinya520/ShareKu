@@ -32,9 +32,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,6 +50,7 @@ import kotlinx.coroutines.launch
 fun AboutScreen(onBack: () -> Unit, onChangelog: () -> Unit = {}) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val clipboardManager = LocalClipboardManager.current
 
     Scaffold(
         topBar = {
@@ -100,7 +103,7 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             MaterialTheme.colorScheme.onTertiaryContainer) {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/linlinya520/ShareKu")))
                         }
-                    AboutChip(R.drawable.ic_version_chip, "v1.2.0", "当前版本",
+                    AboutChip(R.drawable.ic_version_chip, "v1.3.0", "当前版本",
                         MaterialTheme.colorScheme.secondaryContainer,
                         MaterialTheme.colorScheme.onSecondaryContainer) { onChangelog() }
                     AboutChip(R.drawable.ic_license_chip, "GPL-3.0", "开源协议",
@@ -132,8 +135,22 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             modifier = Modifier.size(72.dp),
                             normalShape = RoundedCornerShape(20.dp)
                         )
-                        Text("Lin Jing", style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                    clipboardManager.setText(AnnotatedString("3470176230"))
+                                    android.widget.Toast.makeText(context, "QQ号已复制", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("林旌", style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(6.dp))
+                            Text("(点击复制QQ号!)", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Text("QQ: 3470176230", style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
