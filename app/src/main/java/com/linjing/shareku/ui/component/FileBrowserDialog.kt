@@ -42,6 +42,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.linjing.shareku.data.ShizukuEntry
 import com.linjing.shareku.data.ShizukuFileManager
+import com.linjing.shareku.ui.theme.LocalUiStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
@@ -67,6 +68,7 @@ fun FileBrowserDialog(
     val history = remember { mutableStateListOf(initialPath) }
     val haptic = LocalHapticFeedback.current
     val context = androidx.compose.ui.platform.LocalContext.current
+    val isMiuix = LocalUiStyle.current == "miuix"
 
     // ═══ Shizuku 状态 ═══
     val shizukuAvailable = remember { ShizukuFileManager.isAvailable() }
@@ -193,29 +195,55 @@ fun FileBrowserDialog(
                     actions = {
                         // Shizuku 切换按钮（仅 Shizuku 可用时显示）
                         if (shizukuAvailable) {
-                            FilledTonalButton(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    if (!shizukuMode && !shizukuGranted) {
-                                        ShizukuFileManager.requestPermission()
-                                    } else {
-                                        shizukuMode = !shizukuMode
-                                    }
-                                },
-                                modifier = Modifier.padding(end = 8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.AdminPanelSettings, null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = if (shizukuMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    if (shizukuMode) "Shizuku" else "普通",
-                                    fontSize = MaterialTheme.typography.labelSmall.fontSize,
-                                    color = if (shizukuMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            if (isMiuix) {
+                                top.yukonga.miuix.kmp.basic.Button(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        if (!shizukuMode && !shizukuGranted) {
+                                            ShizukuFileManager.requestPermission()
+                                        } else {
+                                            shizukuMode = !shizukuMode
+                                        }
+                                    },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.AdminPanelSettings, null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (shizukuMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        if (shizukuMode) "Shizuku" else "普通",
+                                        fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                                        color = if (shizukuMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                FilledTonalButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        if (!shizukuMode && !shizukuGranted) {
+                                            ShizukuFileManager.requestPermission()
+                                        } else {
+                                            shizukuMode = !shizukuMode
+                                        }
+                                    },
+                                    modifier = Modifier.padding(end = 8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.AdminPanelSettings, null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (shizukuMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        if (shizukuMode) "Shizuku" else "普通",
+                                        fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                                        color = if (shizukuMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     },
@@ -225,7 +253,7 @@ fun FileBrowserDialog(
                 )
 
                 // ─── Breadcrumb ───
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 ScrollableRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -268,7 +296,7 @@ fun FileBrowserDialog(
                         )
                     }
                 }
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
                 // ─── 目录列表 ───
                 when {
@@ -289,8 +317,14 @@ fun FileBrowserDialog(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.height(12.dp))
-                                Button(onClick = { ShizukuFileManager.requestPermission() }) {
-                                    Text("授权")
+                                if (isMiuix) {
+                                    top.yukonga.miuix.kmp.basic.Button(onClick = { ShizukuFileManager.requestPermission() }) {
+                                        Text("授权")
+                                    }
+                                } else {
+                                    Button(onClick = { ShizukuFileManager.requestPermission() }) {
+                                        Text("授权")
+                                    }
                                 }
                             }
                         }
@@ -375,18 +409,32 @@ fun FileBrowserDialog(
                 }
 
                 // ─── Bottom confirm button ───
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                Button(
-                    onClick = { onConfirm(currentPath) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp)
-                        .height(52.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Check, null, Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("选择此目录", fontWeight = FontWeight.Bold)
+                HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                if (isMiuix) {
+                    top.yukonga.miuix.kmp.basic.Button(
+                        onClick = { onConfirm(currentPath) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                            .height(52.dp)
+                    ) {
+                        Icon(Icons.Default.Check, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("选择此目录", fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Button(
+                        onClick = { onConfirm(currentPath) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                            .height(52.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Check, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("选择此目录", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

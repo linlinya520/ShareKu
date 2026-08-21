@@ -1,10 +1,13 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AppTopBar
 import android.content.Intent
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.PowerManager
 import android.provider.Settings
 import android.Manifest
 import android.content.pm.PackageManager
@@ -42,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.peer.PeerDevice
@@ -49,6 +54,7 @@ import com.linjing.shareku.peer.PeerDiscovery
 import com.linjing.shareku.peer.PeerTransferClient
 import com.linjing.shareku.peer.TransferProgress
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -60,6 +66,7 @@ fun DirectShareScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val isMiuix = LocalUiStyle.current == "miuix"
 
     val peerDiscovery = remember { PeerDiscovery(context) }
     val peers by peerDiscovery.peers.collectAsState()
@@ -77,20 +84,52 @@ fun DirectShareScreen(onBack: () -> Unit) {
 
     // Server not running dialog
     if (showServerDialog) {
-        AlertDialog(
-            onDismissRequest = { onBack() },
-            title = { Text("服务器未启动") },
-            text = { Text("需要先在主页启动服务器才能扫描到附近设备并进行文件传输。") },
-            confirmButton = {
-                Button(onClick = {
-                    showServerDialog = false
-                    onBack()
-                }) { Text("好的，返回主页") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showServerDialog = false }) { Text("仍然进入") }
+        if (isMiuix) {
+            Dialog(
+                onDismissRequest = { onBack() },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("服务器未启动", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3)
+                        Spacer(Modifier.height(8.dp))
+                        Text("需要先在主页启动服务器才能扫描到附近设备并进行文件传输。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            top.yukonga.miuix.kmp.basic.TextButton(text = "仍然进入", onClick = { showServerDialog = false })
+                            Spacer(Modifier.padding(start = 8.dp))
+                            top.yukonga.miuix.kmp.basic.Button(
+                                onClick = {
+                                    showServerDialog = false
+                                    onBack()
+                                }
+                            ) { Text("好的，返回主页") }
+                        }
+                    }
+                }
             }
-        )
+        } else {
+            AlertDialog(
+                onDismissRequest = { onBack() },
+                title = { Text("服务器未启动") },
+                text = { Text("需要先在主页启动服务器才能扫描到附近设备并进行文件传输。") },
+                confirmButton = {
+                    Button(onClick = {
+                        showServerDialog = false
+                        onBack()
+                    }) { Text("好的，返回主页") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showServerDialog = false }) { Text("仍然进入") }
+                }
+            )
+        }
     }
 
     // File selection
@@ -120,7 +159,7 @@ fun DirectShareScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("设备直连", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -152,15 +191,28 @@ fun DirectShareScreen(onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                FilledTonalButton(onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    peerDiscovery.rescan()
-                }) {
-                    if (isScanning) {
-                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(6.dp))
+                if (isMiuix) {
+                    top.yukonga.miuix.kmp.basic.Button(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        peerDiscovery.rescan()
+                    }) {
+                        if (isScanning) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(if (isScanning) "扫描中" else "扫描")
                     }
-                    Text(if (isScanning) "扫描中" else "扫描")
+                } else {
+                    FilledTonalButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        peerDiscovery.rescan()
+                    }) {
+                        if (isScanning) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(if (isScanning) "扫描中" else "扫描")
+                    }
                 }
             }
 
@@ -225,42 +277,79 @@ fun DirectShareScreen(onBack: () -> Unit) {
             var manualPort by remember { mutableStateOf("8080") }
             var showManualInput by remember { mutableStateOf(false) }
 
-            TextButton(onClick = { showManualInput = !showManualInput }) {
-                Icon(Icons.Default.Add, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(if (showManualInput) "收起手动连接" else "手动输入 IP 连接")
+            if (isMiuix) {
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    text = if (showManualInput) "收起手动连接" else "手动输入 IP 连接",
+                    onClick = { showManualInput = !showManualInput }
+                )
+            } else {
+                TextButton(onClick = { showManualInput = !showManualInput }) {
+                    Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (showManualInput) "收起手动连接" else "手动输入 IP 连接")
+                }
             }
 
             AnimatedVisibility(visible = showManualInput, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 CustomCard(cornerRadius = 20.dp, border = null, clickable = false, enableHaptic = false,
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = manualHost, singleLine = true,
-                            onValueChange = { manualHost = it },
-                            label = { Text("IP 地址") },
-                            placeholder = { Text("192.168.1.x") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = manualPort, singleLine = true,
-                            onValueChange = { manualPort = it },
-                            label = { Text("端口") },
-                            placeholder = { Text("8080") },
-                            modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                        )
-                        Button(onClick = {
-                            val host = manualHost.trim()
-                            val port = manualPort.trim().toIntOrNull() ?: 8080
-                            if (host.isNotEmpty()) {
-                                sendingTarget = PeerDevice(name = host, host = host, port = port, serviceName = "manual:$host")
-                                selectedFiles = emptyList()
-                                sendProgress = null
-                                sendError = null
-                                sendSuccess = false
-                            }
-                        }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("连接") }
+                        if (isMiuix) {
+                            top.yukonga.miuix.kmp.basic.TextField(
+                                value = manualHost, singleLine = true,
+                                onValueChange = { manualHost = it },
+                                label = "IP 地址",
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            top.yukonga.miuix.kmp.basic.TextField(
+                                value = manualPort, singleLine = true,
+                                onValueChange = { manualPort = it },
+                                label = "端口",
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            top.yukonga.miuix.kmp.basic.Button(
+                                onClick = {
+                                    val host = manualHost.trim()
+                                    val port = manualPort.trim().toIntOrNull() ?: 8080
+                                    if (host.isNotEmpty()) {
+                                        sendingTarget = PeerDevice(name = host, host = host, port = port, serviceName = "manual:$host")
+                                        selectedFiles = emptyList()
+                                        sendProgress = null
+                                        sendError = null
+                                        sendSuccess = false
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("连接") }
+                        } else {
+                            OutlinedTextField(
+                                value = manualHost, singleLine = true,
+                                onValueChange = { manualHost = it },
+                                label = { Text("IP 地址") },
+                                placeholder = { Text("192.168.1.x") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = manualPort, singleLine = true,
+                                onValueChange = { manualPort = it },
+                                label = { Text("端口") },
+                                placeholder = { Text("8080") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Button(onClick = {
+                                val host = manualHost.trim()
+                                val port = manualPort.trim().toIntOrNull() ?: 8080
+                                if (host.isNotEmpty()) {
+                                    sendingTarget = PeerDevice(name = host, host = host, port = port, serviceName = "manual:$host")
+                                    selectedFiles = emptyList()
+                                    sendProgress = null
+                                    sendError = null
+                                    sendSuccess = false
+                                }
+                            }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("连接") }
+                        }
                     }
                 }
             }
@@ -294,44 +383,124 @@ fun DirectShareScreen(onBack: () -> Unit) {
 
                     // Action buttons
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            try { filePickerLauncher.launch(arrayOf("*/*")) } catch (_: Exception) {}
-                        }) {
-                            Icon(Icons.Default.FolderOpen, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("选择文件")
+                        if (isMiuix) {
+                            top.yukonga.miuix.kmp.basic.Button(onClick = {
+                                try { filePickerLauncher.launch(arrayOf("*/*")) } catch (_: Exception) {}
+                            }) {
+                                Icon(Icons.Default.FolderOpen, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("选择文件")
+                            }
+                        } else {
+                            OutlinedButton(onClick = {
+                                try { filePickerLauncher.launch(arrayOf("*/*")) } catch (_: Exception) {}
+                            }) {
+                                Icon(Icons.Default.FolderOpen, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("选择文件")
+                            }
                         }
                         Spacer(Modifier.weight(1f))
-                        Button(
-                            onClick = {
-                                val target = sendingTarget ?: return@Button
-                                val files = selectedFiles
-                                if (files.isEmpty()) return@Button
-                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                val client = PeerTransferClient()
-                                scope.launch {
+                        if (isMiuix) {
+                            top.yukonga.miuix.kmp.basic.Button(
+                                onClick = {
+                                    val target = sendingTarget ?: return@Button
+                                    val files = selectedFiles
+                                    if (files.isEmpty()) return@Button
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    var wl: PowerManager.WakeLock? = null
+                                    var wifiL: WifiManager.WifiLock? = null
                                     try {
-                                        client.sendFiles(files, target.host, target.port).collect { progress ->
-                                            sendProgress = progress
-                                            if (progress.done) {
-                                                sendSuccess = true
-                                                sendingTarget = null
-                                                selectedFiles = emptyList()
-                                            }
+                                        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
+                                        wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ShareKu:Send").apply {
+                                            setReferenceCounted(false)
+                                            acquire()
                                         }
-                                    } catch (e: Exception) {
-                                        sendError = e.message ?: "发送失败"
-                                    } finally {
-                                        client.close()
+                                    } catch (_: Exception) {}
+                                    try {
+                                        val wm = context.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as WifiManager
+                                        wifiL = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ShareKu:Send").apply {
+                                            setReferenceCounted(false)
+                                            acquire()
+                                        }
+                                    } catch (_: Exception) {}
+                                    val client = PeerTransferClient()
+                                    scope.launch {
+                                        try {
+                                            client.sendFiles(files, target.host, target.port).collect { progress ->
+                                                sendProgress = progress
+                                                if (progress.done) {
+                                                    sendSuccess = true
+                                                    sendingTarget = null
+                                                    selectedFiles = emptyList()
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            sendError = e.message ?: "发送失败"
+                                        } finally {
+                                            client.close()
+                                            try { wl?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+                                            try { wifiL?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+                                        }
                                     }
-                                }
-                            },
-                            enabled = selectedFiles.isNotEmpty() && sendProgress?.done != true,
-                            shape = RoundedCornerShape(24.dp)
-                        ) {
-                            Icon(Icons.Default.Send, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("发送")
+                                },
+                                enabled = selectedFiles.isNotEmpty() && sendProgress?.done != true
+                            ) {
+                                Icon(Icons.Default.Send, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("发送")
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    val target = sendingTarget ?: return@Button
+                                    val files = selectedFiles
+                                    if (files.isEmpty()) return@Button
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    // 发送期间持唤醒锁 + WiFi 锁，锁屏后传输不中断
+                                    var wl: PowerManager.WakeLock? = null
+                                    var wifiL: WifiManager.WifiLock? = null
+                                    try {
+                                        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
+                                        wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ShareKu:Send").apply {
+                                            setReferenceCounted(false)
+                                            acquire()
+                                        }
+                                    } catch (_: Exception) {}
+                                    try {
+                                        val wm = context.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as WifiManager
+                                        wifiL = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ShareKu:Send").apply {
+                                            setReferenceCounted(false)
+                                            acquire()
+                                        }
+                                    } catch (_: Exception) {}
+                                    val client = PeerTransferClient()
+                                    scope.launch {
+                                        try {
+                                            client.sendFiles(files, target.host, target.port).collect { progress ->
+                                                sendProgress = progress
+                                                if (progress.done) {
+                                                    sendSuccess = true
+                                                    sendingTarget = null
+                                                    selectedFiles = emptyList()
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            sendError = e.message ?: "发送失败"
+                                        } finally {
+                                            client.close()
+                                            try { wl?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+                                            try { wifiL?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+                                        }
+                                    }
+                                },
+                                enabled = selectedFiles.isNotEmpty() && sendProgress?.done != true,
+                                shape = RoundedCornerShape(24.dp)
+                            ) {
+                                Icon(Icons.Default.Send, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("发送")
+                            }
                         }
                     }
 

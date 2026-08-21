@@ -1,5 +1,6 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AppTopBar
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -33,6 +34,18 @@ fun ChangelogScreen(onBack: () -> Unit) {
 
     val changelogs = remember {
         listOf(
+            ChangelogEntry("v1.3.0", "2026-08", listOf(
+                "🎨 MIUI 风格界面系统：设置→外观可切换 Material 3 / MIUI 双风格",
+                "🧩 接入 miuix 组件库：主题对齐 Spec2021 + BlurScaffold 毛玻璃",
+                "📐 MIUI 分组卡片：整组一个背景卡片+内部分割线，四角大圆角",
+                "🔽 覆盖式展开选择组件：点击从锚点弹出，流水缩放动画，选中打勾",
+                "🖼️ 关于页致谢开发者 CINXZ（miuix 组件参考，圆形头像+超链接）",
+                "🔐 安全升级：一次性 4 位验证码+会话令牌替代 IP 白名单（改 IP 无法绕过审批）",
+                "🔋 唤醒锁 + WiFi 锁：锁屏后台传输不中断",
+                "⚡ 体积优化：开启 R8 裁切 + 移除冗余 Netty 引擎，APK 由 20MB 降至 2.8MB",
+                "💻 WebDAV 映射脚本兼容 Win7/10/11，服务端 PROPFIND 修复（Windows 资源管理器不再报位置不可用）",
+                "🎛️ 全套组件 MIUI 化：按钮/开关/对话框/输入框/顶栏/展开式选择全面落地",
+            )),
             ChangelogEntry("v1.2.0", "2026-08", listOf(
                 "Shizuku 高权限文件访问：可浏览并共享 /storage/emulated/0/Android/data 等受限目录（需安装并授权 Shizuku）",
                 "受限目录共享：选择 Android/data 等目录作为共享根后，网页端可真实列出并下载文件（Shizuku 模式下）",
@@ -103,7 +116,7 @@ fun ChangelogScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("更新内容", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = {

@@ -1,5 +1,7 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AppSwitch
+import com.linjing.shareku.ui.component.AppTopBar
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -30,6 +32,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +50,7 @@ import com.linjing.shareku.service.ServerForegroundService
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.component.FileBrowserDialog
 import com.linjing.shareku.ui.component.QrCodeCard
+import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareKuAnimationSpecs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -61,10 +66,12 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val prefs = AppSingletons.preferencesManager
+    val uiStyle by prefs.uiStyle.collectAsState(initial = "material")
     val networkUtils = remember { NetworkUtils() }
 
     val isServerRunning by AppSingletons.isServerRunning.collectAsState()
     val pendingIp by AppSingletons.pendingConfirmIp.collectAsState()
+    val pendingConfirmCode by AppSingletons.pendingConfirmCode.collectAsState()
     var showCopied by remember { mutableStateOf(false) }
 
     // Collect prefs
@@ -162,12 +169,8 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("ShareKu", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
+            AppTopBar(
+                title = "ShareKu",
                 actions = {
                     IconButton(onClick = onNavigateToLog) {
                         Icon(Icons.Default.Terminal, "日志")
@@ -303,10 +306,17 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f))
                     }
-                    FilledTonalButton(onClick = {
-                        dirInput = sharedDir
-                        showDirDialog = true
-                    }) { Text("更改") }
+                    if (LocalUiStyle.current == "miuix") {
+                        top.yukonga.miuix.kmp.basic.Button(onClick = {
+                            dirInput = sharedDir
+                            showDirDialog = true
+                        }) { Text("更改") }
+                    } else {
+                        FilledTonalButton(onClick = {
+                            dirInput = sharedDir
+                            showDirDialog = true
+                        }) { Text("更改") }
+                    }
                 }
             }
 
@@ -335,94 +345,201 @@ fun HomeScreen(
 
             // Port dialog
             if (showPortDialog) {
-                AlertDialog(
-                    onDismissRequest = { showPortDialog = false },
-                    title = { Text("修改端口") },
-                    text = {
-                        OutlinedTextField(
-                            value = portInput, singleLine = true,
-                            onValueChange = { portInput = it },
-                            label = { Text("端口号") },
-                            placeholder = { Text("8080") },
-                            modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                        )
-                    },
-                    confirmButton = {
-                        Button(onClick = {
-                            portInput.toIntOrNull()?.let { p ->
-                                scope.launch { prefs.setPort(p) }
+                if (LocalUiStyle.current == "miuix") {
+                    Dialog(
+                        onDismissRequest = { showPortDialog = false },
+                        properties = DialogProperties(usePlatformDefaultWidth = false)
+                    ) {
+                        top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                            Column(Modifier.padding(20.dp)) {
+                                Text("修改端口", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3)
+                                Spacer(Modifier.height(12.dp))
+                                top.yukonga.miuix.kmp.basic.TextField(
+                                    value = portInput,
+                                    onValueChange = { portInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = "端口号",
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                                Spacer(Modifier.height(20.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    top.yukonga.miuix.kmp.basic.TextButton(text = "取消", onClick = { showPortDialog = false })
+                                    Spacer(Modifier.padding(start = 8.dp))
+                                    top.yukonga.miuix.kmp.basic.Button(
+                                        onClick = {
+                                            portInput.toIntOrNull()?.let { p ->
+                                                scope.launch { prefs.setPort(p) }
+                                            }
+                                            showPortDialog = false
+                                        },
+                                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColorsPrimary()
+                                    ) { Text("确认") }
+                                }
                             }
-                            showPortDialog = false
-                        }) { Text("确认") }
-                    },
-                    dismissButton = { TextButton(onClick = { showPortDialog = false }) { Text("取消") } }
-                )
+                        }
+                    }
+                } else {
+                    AlertDialog(
+                        onDismissRequest = { showPortDialog = false },
+                        title = { Text("修改端口") },
+                        text = {
+                            OutlinedTextField(
+                                value = portInput, singleLine = true,
+                                onValueChange = { portInput = it },
+                                label = { Text("端口号") },
+                                placeholder = { Text("8080") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        },
+                        confirmButton = {
+                            Button(onClick = {
+                                portInput.toIntOrNull()?.let { p ->
+                                    scope.launch { prefs.setPort(p) }
+                                }
+                                showPortDialog = false
+                            }) { Text("确认") }
+                        },
+                        dismissButton = { TextButton(onClick = { showPortDialog = false }) { Text("取消") } }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Change directory dialog
             if (showDirDialog) {
-                AlertDialog(
-                    onDismissRequest = { showDirDialog = false },
-                    title = { Text("更改挂载目录") },
-                    text = {
-                        Column {
-                            Text("输入要共享的文件夹路径，例如 /sdcard/Download",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = dirInput,
-                                onValueChange = { dirInput = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                label = { Text("目录路径") },
-                                placeholder = { Text("/sdcard") }
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            // Quick directory buttons
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("/storage/emulated/0", "/sdcard/Download", "/sdcard/DCIM").forEach { path ->
-                                    SuggestionChip(
-                                        onClick = { dirInput = path },
-                                        label = { Text(path.split("/").last().ifEmpty { path }, fontSize = MaterialTheme.typography.labelSmall.fontSize) }
-                                    )
+                if (LocalUiStyle.current == "miuix") {
+                    Dialog(
+                        onDismissRequest = { showDirDialog = false },
+                        properties = DialogProperties(usePlatformDefaultWidth = false)
+                    ) {
+                        top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                            Column(Modifier.padding(20.dp)) {
+                                Text("更改挂载目录", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3)
+                                Spacer(Modifier.height(8.dp))
+                                Text("输入要共享的文件夹路径，例如 /sdcard/Download",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(12.dp))
+                                top.yukonga.miuix.kmp.basic.TextField(
+                                    value = dirInput,
+                                    onValueChange = { dirInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = "目录路径",
+                                    singleLine = true
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("/storage/emulated/0", "/sdcard/Download", "/sdcard/DCIM").forEach { path ->
+                                        top.yukonga.miuix.kmp.basic.TextButton(
+                                            text = path.split("/").last().ifEmpty { path },
+                                            onClick = { dirInput = path }
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                top.yukonga.miuix.kmp.basic.Button(
+                                    onClick = { safDirLauncher.launch(null) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("使用系统文件管理器选择")
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                top.yukonga.miuix.kmp.basic.Button(
+                                    onClick = { showFileBrowser = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Folder, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("使用自带文件管理器选择")
+                                }
+                                Spacer(Modifier.height(20.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    top.yukonga.miuix.kmp.basic.TextButton(text = "取消", onClick = { showDirDialog = false })
+                                    Spacer(Modifier.padding(start = 8.dp))
+                                    top.yukonga.miuix.kmp.basic.Button(
+                                        onClick = {
+                                            scope.launch { prefs.setSharedDir(dirInput) }
+                                            showDirDialog = false
+                                        }
+                                    ) { Text("确认") }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            // SAF native file picker button
-                            OutlinedButton(
-                                onClick = { safDirLauncher.launch(null) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("使用系统文件管理器选择")
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            // Built-in file browser button
-                            OutlinedButton(
-                                onClick = { showFileBrowser = true },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("使用自带文件管理器选择")
-                            }
                         }
-                    },
-                    confirmButton = {
-                        Button(onClick = {
-                            scope.launch { prefs.setSharedDir(dirInput) }
-                            showDirDialog = false
-                        }) { Text("确认") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDirDialog = false }) { Text("取消") }
                     }
-                )
+                } else {
+                    AlertDialog(
+                        onDismissRequest = { showDirDialog = false },
+                        title = { Text("更改挂载目录") },
+                        text = {
+                            Column {
+                                Text("输入要共享的文件夹路径，例如 /sdcard/Download",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = dirInput,
+                                    onValueChange = { dirInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    label = { Text("目录路径") },
+                                    placeholder = { Text("/sdcard") }
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                // Quick directory buttons
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("/storage/emulated/0", "/sdcard/Download", "/sdcard/DCIM").forEach { path ->
+                                        SuggestionChip(
+                                            onClick = { dirInput = path },
+                                            label = { Text(path.split("/").last().ifEmpty { path }, fontSize = MaterialTheme.typography.labelSmall.fontSize) }
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                // SAF native file picker button
+                                OutlinedButton(
+                                    onClick = { safDirLauncher.launch(null) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("使用系统文件管理器选择")
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                // Built-in file browser button
+                                OutlinedButton(
+                                    onClick = { showFileBrowser = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Folder, null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("使用自带文件管理器选择")
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(onClick = {
+                                scope.launch { prefs.setSharedDir(dirInput) }
+                                showDirDialog = false
+                            }) { Text("确认") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDirDialog = false }) { Text("取消") }
+                        }
+                    )
+                }
             }
 
             // Server status — always composed, animated transition
@@ -488,22 +605,41 @@ AnimatedContent(
                                     textAlign = TextAlign.Center, maxLines = 1)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    FilledTonalButton(onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                        clipboardManager.setText(AnnotatedString(url))
-                                        showCopied = true
-                                        scope.launch { delay(2000); showCopied = false }
-                                    }) { Text(if (showCopied) "已复制！" else "复制链接") }
-                                    Button(onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    generateWindowsMapScript(
-                                        url = url,
-                                        authEnabled = enableAuth,
-                                        authUser = authUsername,
-                                        authPass = authPassword,
-                                        clipboardManager = clipboardManager
-                                    )
-                                }) { Text("映射 Z: 盘") }
+                                    if (LocalUiStyle.current == "miuix") {
+                                        top.yukonga.miuix.kmp.basic.Button(onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            clipboardManager.setText(AnnotatedString(url))
+                                            showCopied = true
+                                            scope.launch { delay(2000); showCopied = false }
+                                        }) { Text(if (showCopied) "已复制！" else "复制链接") }
+                                        top.yukonga.miuix.kmp.basic.Button(onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            generateWindowsMapScript(
+                                                url = url,
+                                                authEnabled = enableAuth,
+                                                authUser = authUsername,
+                                                authPass = authPassword,
+                                                clipboardManager = clipboardManager
+                                            )
+                                        }) { Text("映射 Z: 盘") }
+                                    } else {
+                                        FilledTonalButton(onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            clipboardManager.setText(AnnotatedString(url))
+                                            showCopied = true
+                                            scope.launch { delay(2000); showCopied = false }
+                                        }) { Text(if (showCopied) "已复制！" else "复制链接") }
+                                        Button(onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            generateWindowsMapScript(
+                                                url = url,
+                                                authEnabled = enableAuth,
+                                                authUser = authUsername,
+                                                authPass = authPassword,
+                                                clipboardManager = clipboardManager
+                                            )
+                                        }) { Text("映射 Z: 盘") }
+                                    }
                                 }
                             }
                         } else {
@@ -530,6 +666,7 @@ AnimatedContent(
             }
 
             // ── 后台定位保活快捷开关 ──
+            Spacer(Modifier.height(14.dp))
             if (!isServerRunning) {
                 CustomCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -561,7 +698,7 @@ AnimatedContent(
                                 Text("防止熄屏/切后台后断网", style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Switch(checked = enableLocationKeepAlive, onCheckedChange = { v ->
+                            AppSwitch(checked = enableLocationKeepAlive, onCheckedChange = { v ->
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 scope.launch { prefs.setEnableLocationKeepAlive(v) }
                             })
@@ -593,21 +730,39 @@ AnimatedContent(
                 label = "btn"
             ) { running ->
                 if (running) {
-                    Button(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            val intent = Intent(context, ServerForegroundService::class.java).apply {
-                                action = ServerForegroundService.ACTION_STOP
-                            }
-                            context.startService(intent)
-                            AppSingletons.setServerRunning(false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp)
-                    ) {
-                        Icon(Icons.Default.Stop, null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("停止服务器", fontWeight = FontWeight.Bold)
+                    if (uiStyle == "miuix") {
+                        top.yukonga.miuix.kmp.basic.Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                val intent = Intent(context, ServerForegroundService::class.java).apply {
+                                    action = ServerForegroundService.ACTION_STOP
+                                }
+                                context.startService(intent)
+                                AppSingletons.setServerRunning(false)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Stop, null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("停止服务器", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                val intent = Intent(context, ServerForegroundService::class.java).apply {
+                                    action = ServerForegroundService.ACTION_STOP
+                                }
+                                context.startService(intent)
+                                AppSingletons.setServerRunning(false)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(28.dp)
+                        ) {
+                            Icon(Icons.Default.Stop, null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("停止服务器", fontWeight = FontWeight.Bold)
+                        }
                     }
                 } else {
                     // Reusable start helper
@@ -631,6 +786,27 @@ AnimatedContent(
                         AppSingletons.setServerRunning(true)
                     }
 
+                    if (uiStyle == "miuix") {
+                        top.yukonga.miuix.kmp.basic.Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                if (enableLocationKeepAlive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    when {
+                                        !hasLocationPermission() -> showLocExplainDialog = true
+                                        !isLocationServiceOn() -> showLocServiceOffDialog = true
+                                        else -> doStartService()
+                                    }
+                                } else {
+                                    doStartService()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("启动服务器", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
                     Button(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -651,6 +827,7 @@ AnimatedContent(
                         Icon(Icons.Default.PlayArrow, null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("启动服务器", fontWeight = FontWeight.Bold)
+                    }
                     }
                 }
             }
@@ -760,76 +937,188 @@ AnimatedContent(
         }
     }
 
-    // Approval dialog
+    // Approval dialog —— 展示一次性验证码（码即授权凭证），拒绝 + 右上角关闭
     if (pendingIp != null) {
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text("新设备请求连接") },
-            text = { Text("IP: $pendingIp\n正在请求访问 ShareKu，是否批准？") },
-            confirmButton = {
-                Button(onClick = {
-                    val intent = Intent(context, ServerForegroundService::class.java).apply {
-                        action = ServerForegroundService.ACTION_APPROVE
-                        putExtra(ServerForegroundService.EXTRA_CONFIRM_IP, pendingIp)
+        val pendingCode = pendingConfirmCode
+        Dialog(onDismissRequest = { AppSingletons.dequeuePendingIp() }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "新设备请求访问",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { AppSingletons.dequeuePendingIp() }) {
+                            Icon(Icons.Default.Close, "关闭")
+                        }
                     }
-                    context.startService(intent)
-                }) { Text("批准") }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = {
-                    val intent = Intent(context, ServerForegroundService::class.java).apply {
-                        action = ServerForegroundService.ACTION_DENY
-                        putExtra(ServerForegroundService.EXTRA_CONFIRM_IP, pendingIp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("IP: $pendingIp", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "一次性验证码",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        pendingCode ?: "",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "把此码告知对方，对方输入后即可访问。验证码仅可使用一次，5分钟内有效。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    if (LocalUiStyle.current == "miuix") {
+                        top.yukonga.miuix.kmp.basic.Button(
+                            onClick = {
+                                val intent = Intent(context, ServerForegroundService::class.java).apply {
+                                    action = ServerForegroundService.ACTION_DENY
+                                    putExtra(ServerForegroundService.EXTRA_CONFIRM_IP, pendingIp)
+                                }
+                                context.startService(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("拒绝该设备") }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(context, ServerForegroundService::class.java).apply {
+                                    action = ServerForegroundService.ACTION_DENY
+                                    putExtra(ServerForegroundService.EXTRA_CONFIRM_IP, pendingIp)
+                                }
+                                context.startService(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("拒绝该设备") }
                     }
-                    context.startService(intent)
-                }) { Text("拒绝") }
+                }
             }
-        )
+        }
     }
 
     // Location explanation dialog
     if (showLocExplainDialog) {
-        AlertDialog(
-            onDismissRequest = { showLocExplainDialog = false },
-            title = { Text("后台定位保活说明") },
-            text = {
-                Text("为防止鸿蒙/国产手机在熄屏或切后台后切断网络连接，ShareKu 需要在后台使用定位服务保持网络活跃。\n\n• 仅使用网络定位（低功耗），不会使用 GPS\n• 不会记录或上传任何位置信息\n• 可在「设置 → 安全 → 后台定位保活」中随时关闭")
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showLocExplainDialog = false
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        if (LocalUiStyle.current == "miuix") {
+            Dialog(
+                onDismissRequest = { showLocExplainDialog = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("后台定位保活说明", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3)
+                        Spacer(Modifier.height(8.dp))
+                        Text("为防止鸿蒙/国产手机在熄屏或切后台后切断网络连接，ShareKu 需要在后台使用定位服务保持网络活跃。\n\n• 仅使用网络定位（低功耗），不会使用 GPS\n• 不会记录或上传任何位置信息\n• 可在「设置 → 安全 → 后台定位保活」中随时关闭",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            top.yukonga.miuix.kmp.basic.TextButton(text = "暂不", onClick = { showLocExplainDialog = false })
+                            Spacer(Modifier.padding(start = 8.dp))
+                            top.yukonga.miuix.kmp.basic.Button(
+                                onClick = {
+                                    showLocExplainDialog = false
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                        locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                    }
+                                }
+                            ) { Text("知道了，去授权") }
+                        }
                     }
-                }) { Text("知道了，去授权") }
-            },
-            dismissButton = { TextButton(onClick = { showLocExplainDialog = false }) { Text("暂不") } }
-        )
+                }
+            }
+        } else {
+            AlertDialog(
+                onDismissRequest = { showLocExplainDialog = false },
+                title = { Text("后台定位保活说明") },
+                text = {
+                    Text("为防止鸿蒙/国产手机在熄屏或切后台后切断网络连接，ShareKu 需要在后台使用定位服务保持网络活跃。\n\n• 仅使用网络定位（低功耗），不会使用 GPS\n• 不会记录或上传任何位置信息\n• 可在「设置 → 安全 → 后台定位保活」中随时关闭")
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showLocExplainDialog = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                        }
+                    }) { Text("知道了，去授权") }
+                },
+                dismissButton = { TextButton(onClick = { showLocExplainDialog = false }) { Text("暂不") } }
+            )
+        }
     }
     // Location service off dialog
     if (showLocServiceOffDialog) {
-        AlertDialog(
-            onDismissRequest = { showLocServiceOffDialog = false },
-            title = { Text("需开启系统定位服务") },
-            text = {
-                Text("后台定位保活需要系统的「定位服务」处于开启状态。\n\n当前系统定位服务已关闭，定位保活将无法工作。\n\n请前往系统设置开启定位后重新启动。")
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showLocServiceOffDialog = false
-                    // Open system location settings
-                    val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                    locationServiceLauncher.launch(intent)
-                }) { Text("前往开启") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showLocServiceOffDialog = false
+        if (LocalUiStyle.current == "miuix") {
+            Dialog(
+                onDismissRequest = { showLocServiceOffDialog = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("需开启系统定位服务", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3)
+                        Spacer(Modifier.height(8.dp))
+                        Text("后台定位保活需要系统的「定位服务」处于开启状态。\n\n当前系统定位服务已关闭，定位保活将无法工作。\n\n请前往系统设置开启定位后重新启动。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            top.yukonga.miuix.kmp.basic.TextButton(text = "取消", onClick = { showLocServiceOffDialog = false })
+                            Spacer(Modifier.padding(start = 8.dp))
+                            top.yukonga.miuix.kmp.basic.Button(
+                                onClick = {
+                                    showLocServiceOffDialog = false
+                                    val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                    locationServiceLauncher.launch(intent)
+                                }
+                            ) { Text("前往开启") }
+                        }
+                    }
+                }
+            }
+        } else {
+            AlertDialog(
+                onDismissRequest = { showLocServiceOffDialog = false },
+                title = { Text("需开启系统定位服务") },
+                text = {
+                    Text("后台定位保活需要系统的「定位服务」处于开启状态。\n\n当前系统定位服务已关闭，定位保活将无法工作。\n\n请前往系统设置开启定位后重新启动。")
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showLocServiceOffDialog = false
+                        // Open system location settings
+                        val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                        locationServiceLauncher.launch(intent)
+                    }) { Text("前往开启") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showLocServiceOffDialog = false
                     // Start anyway without location keepalive
                     // Note: doStartService is not accessible here, just dismiss
                 }) { Text("暂不开启") }
             }
         )
+        }
     }
     // File browser dialog
     if (showFileBrowser) {
@@ -858,37 +1147,25 @@ private fun generateWindowsMapScript(
     val port = uri.port
     val uncPath = "\\\\$ip@$port\\webdav"
     val authLine = if (authEnabled) "/user:$authUser $authPass" else ""
-    val script = """
+        val script = """
 @echo off
-chcp 65001 >nul
-echo 正在将 ShareKu 映射为 Z: 盘...
+title ShareKu WebDAV Mapping
+echo ============================================
+echo   ShareKu WebDAV Mapping
+echo ============================================
 echo.
-
-:: 1. 启动 WebClient 服务（需要管理员权限）
-net start WebClient >nul 2>&1
-
-:: 2. 允许 HTTP 基本认证（非 HTTPS 必须）
-reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" /v BasicAuthLevel /t REG_DWORD /d 2 /f >nul 2>&1
-
-:: 3. 重启 WebClient 使注册表生效
-net stop WebClient >nul 2>&1
-net start WebClient >nul 2>&1
-
-:: 4. 清除旧映射
-net use Z: /delete >nul 2>&1
-
-:: 5. 映射驱动器（UNC 格式，去掉 DavWWWRoot——仅 IIS 需要）
+echo Mapping Z: drive...
 net use Z: $uncPath /persistent:no $authLine
-
 if %errorlevel%==0 (
-    echo.
-    echo [成功] 已映射 Z: 盘
-    explorer Z:
+ echo.
+ echo [OK] Z: drive mapped successfully.
+ echo Opening in Explorer...
+ explorer Z:
 ) else (
-    echo.
-    echo [失败] UNC 映射报错，尝试备用方案：直接用资源管理器打开
-    echo.
-    start http://$ip:$port/webdav
+ echo.
+ echo [FAILED] Error code: %errorlevel%
+ echo Browser: http://$ip:$port/webdav
+ start http://$ip:$port/webdav
 )
 pause
     """.trimIndent()

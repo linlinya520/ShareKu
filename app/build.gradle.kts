@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "com.linjing.shareku"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.linjing.shareku"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.2.0"
+        versionCode = 7
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -42,7 +42,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -96,9 +97,8 @@ dependencies {
     // Material Color Utilities (for dynamic scheme generation)
     implementation("com.google.android.material:material:1.12.0")
 
-    // Ktor Server
+    // Ktor Server（仅 CIO 引擎，Netty 已移除——代码中未使用）
     implementation(libs.ktor.server.core)
-    implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
@@ -119,6 +119,10 @@ dependencies {
     // Shizuku (高权限访问 /storage/emulated/0/Android/data 等受限目录)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+
+    // Miuix（MIUI 风格 UI 组件库，设置-外观可切换）
+    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.3")
 
     // Ktor Client
     implementation(libs.ktor.client.core)

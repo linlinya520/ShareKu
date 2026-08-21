@@ -1,5 +1,7 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AppTopBar
+import com.linjing.shareku.ui.component.AppSwitch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -30,6 +32,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.CacheUtils
+import com.linjing.shareku.ui.component.AppSwitchRow
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import kotlinx.coroutines.flow.first
@@ -60,7 +63,7 @@ fun CacheCleanupScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("缓存清理", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -126,24 +129,16 @@ fun CacheCleanupScreen(onBack: () -> Unit) {
             CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(4.dp)) {
-                    ListItem(
-                        headlineContent = { Text("启用自动清理", style = MaterialTheme.typography.bodyLarge) },
-                        supportingContent = {
-                            Text(
-                                if (autoCleanInterval > 0) "每 ${formatInterval(autoCleanInterval)} 自动清理一次"
-                                else "未启用",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        trailingContent = {
-                            Switch(checked = autoCleanInterval > 0, onCheckedChange = { enabled ->
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                scope.launch {
-                                    if (enabled) prefs.setAutoCleanInterval(60)
-                                    else prefs.setAutoCleanInterval(0)
-                                }
-                            })
+                    AppSwitchRow(
+                        title = "启用自动清理",
+                        subtitle = if (autoCleanInterval > 0) "每 ${formatInterval(autoCleanInterval)} 自动清理一次" else "未启用",
+                        checked = autoCleanInterval > 0,
+                        onChange = { enabled ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            scope.launch {
+                                if (enabled) prefs.setAutoCleanInterval(60)
+                                else prefs.setAutoCleanInterval(0)
+                            }
                         }
                     )
 

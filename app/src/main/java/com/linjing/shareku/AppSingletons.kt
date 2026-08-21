@@ -29,19 +29,22 @@ object AppSingletons {
     val pendingConnections = mutableMapOf<String, Boolean>() // IP -> allowed
     val blockedIPs = mutableSetOf<String>()
 
-    // 审批状态 —— UI 和通知共享，支持多用户队列
-    private val pendingIpQueue = mutableListOf<String>()
+    // 审批状态 —— UI 和通知共享，支持多用户队列（ip -> 一次性验证码）
+    private val pendingIpQueue = mutableListOf<Pair<String, String>>()
     private val _pendingConfirmIp = MutableStateFlow<String?>(null)
     val pendingConfirmIp: StateFlow<String?> = _pendingConfirmIp.asStateFlow()
+    private val _pendingConfirmCode = MutableStateFlow<String?>(null)
+    val pendingConfirmCode: StateFlow<String?> = _pendingConfirmCode.asStateFlow()
     private val _pendingCount = MutableStateFlow(0)
     val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
 
-    /** 入队一个待审批 IP，UI 自动弹出审批弹窗 */
-    fun enqueuePendingIp(ip: String) {
-        pendingIpQueue.add(ip)
+    /** 入队一个待审批 IP（附带一次性验证码），UI 自动弹出审批卡片 */
+    fun enqueuePendingIp(ip: String, code: String) {
+        pendingIpQueue.add(ip to code)
         _pendingCount.value = pendingIpQueue.size
         if (_pendingConfirmIp.value == null) {
             _pendingConfirmIp.value = ip
+            _pendingConfirmCode.value = code
         }
     }
 
@@ -51,7 +54,9 @@ object AppSingletons {
             pendingIpQueue.removeFirst()
         }
         _pendingCount.value = pendingIpQueue.size
-        _pendingConfirmIp.value = pendingIpQueue.firstOrNull()
+        val next = pendingIpQueue.firstOrNull()
+        _pendingConfirmIp.value = next?.first
+        _pendingConfirmCode.value = next?.second
     }
 
     /** 清空审批队列（服务停止时） */
@@ -59,6 +64,7 @@ object AppSingletons {
         pendingIpQueue.clear()
         _pendingCount.value = 0
         _pendingConfirmIp.value = null
+        _pendingConfirmCode.value = null
     }
 
     /** 当前活跃的共享文件（缓存清理跳过） */

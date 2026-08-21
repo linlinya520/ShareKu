@@ -20,6 +20,7 @@ import com.linjing.shareku.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -34,12 +35,15 @@ class MainActivity : ComponentActivity() {
             val dynamicColor by prefs.dynamicColor.collectAsState(initial = true)
             val paletteOrdinal by prefs.paletteStyleOrdinal.collectAsState(initial = 0)
             val paletteStyle = com.linjing.shareku.ui.theme.color.PaletteStyle.entries
-                .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
-            LocalShareTheme(
-                themeMode = ThemeMode.fromName(themeModeName),
-                dynamicColor = dynamicColor,
-                paletteStyle = paletteStyle
-            ) {
+        .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
+    val initialUiStyle = runBlocking { prefs.uiStyle.first() }
+    val uiStyle by prefs.uiStyle.collectAsState(initial = initialUiStyle)
+    LocalShareTheme(
+        themeMode = ThemeMode.fromName(themeModeName),
+        dynamicColor = dynamicColor,
+        paletteStyle = paletteStyle,
+        uiStyle = uiStyle
+    ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
                     LocalShareNavHost(navController = navController, modifier = Modifier.fillMaxSize())

@@ -12,8 +12,10 @@ import android.location.LocationListener
 import android.os.Looper
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.linjing.shareku.AppSingletons
@@ -47,6 +49,41 @@ class ServerForegroundService : Service() {
     private var serverEngine: io.ktor.server.engine.EmbeddedServer<*, *>? = null
     private var server: ShareKuServer? = null
     private val peerDiscovery by lazy { PeerDiscovery(this) }
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+
+    // 锁屏后台传输：服务运行期间持有 CPU 唤醒锁 + WiFi 锁，防止熄屏后传输中断
+    private fun acquireKeepAliveLocks() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ShareKu:Server").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ShareKu", "WakeLock acquire failed", e)
+        }
+        try {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ShareKu:Server").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ShareKu", "WifiLock acquire failed", e)
+        }
+    }
+
+    private fun releaseKeepAliveLocks() {
+        try {
+            wakeLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Exception) {}
+        try {
+            wifiLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Exception) {}
+        wakeLock = null
+        wifiLock = null
+    }
 
     companion object {
         const val ACTION_START = "com.material.localshare.action.START_SERVER"
@@ -74,6 +111,12 @@ class ServerForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        // 服务运行期间持有唤醒锁，锁屏后传输不中断
+        acquireKeepAliveLocks()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
@@ -100,20 +143,10 @@ class ServerForegroundService : Service() {
                 AppSingletons.setServerRunning(false)
                 stopSelf()
             }
-            ACTION_APPROVE -> {
-                val ip = intent.getStringExtra(EXTRA_CONFIRM_IP) ?: return START_NOT_STICKY
-                server?.let { s ->
-                    s.pendingIps.remove(ip)
-                    s.approvedIps.add(ip)
-                }
-                AppSingletons.dequeuePendingIp()
-                cancelConfirmNotification()
-            }
-            // 拒绝某IP的连接请求
+            // 拒绝某IP的连接请求（拉黑）
             ACTION_DENY -> {
                 val ip = intent.getStringExtra(EXTRA_CONFIRM_IP) ?: return START_NOT_STICKY
                 server?.let { s ->
-                    s.pendingIps.remove(ip)
                     s.blockedIps.add(ip)
                 }
                 AppSingletons.dequeuePendingIp()
@@ -170,11 +203,11 @@ class ServerForegroundService : Service() {
                     uploadDir = uploadDir,
                     receiveDir = File(receiveDir),
                     clipboardManager = clipboardManager,
-                    onNewConnection = { ip ->
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            showConfirmNotification(ip)
-                        }
-                    },
+                    onNewConnection = { ip, code ->
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        showConfirmNotification(ip, code)
+                    }
+                },
                     onPeerTransfer = { senderIp, fileName, fileSize, tempFile ->
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             // 局域网直连：不再询问，直接保存到接收目录
@@ -236,16 +269,8 @@ class ServerForegroundService : Service() {
         }
     }
 
-    // 连接确认通知 —— 带批准/拒绝两个按钮
-    private fun showConfirmNotification(ip: String) {
-        val approveIntent = PendingIntent.getService(
-            this, ip.hashCode() and 0xFFFF,
-            Intent(this, ServerForegroundService::class.java).apply {
-                action = ACTION_APPROVE
-                putExtra(EXTRA_CONFIRM_IP, ip)
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+    // 连接确认通知 —— 展示一次性验证码 + 拒绝按钮（不再有"批准"按钮，码即授权凭证）
+    private fun showConfirmNotification(ip: String, code: String) {
         val denyIntent = PendingIntent.getService(
             this, (ip.hashCode() and 0xFFFF) + 1,
             Intent(this, ServerForegroundService::class.java).apply {
@@ -255,17 +280,17 @@ class ServerForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notify = NotificationCompat.Builder(this, ShareKuApp.CHANNEL_CONFIRM)
-            .setContentTitle("新设备请求连接")
-            .setContentText("IP: $ip 正在请求访问 ShareKu")
+            .setContentTitle("新设备请求访问")
+            .setContentText("IP: $ip · 一次性验证码: $code（仅5分钟有效）")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("IP: $ip 请求访问 ShareKu\n\n一次性验证码: $code\n\n把此码告知对方，对方输入后即可访问。验证码仅可使用一次。"))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            .addAction(android.R.drawable.ic_input_add, "批准", approveIntent)
             .addAction(android.R.drawable.ic_delete, "拒绝", denyIntent)
             .build()
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFY_CONFIRM_ID, notify)
-        AppSingletons.enqueuePendingIp(ip)
+        AppSingletons.enqueuePendingIp(ip, code)
     }
 
     private fun cancelConfirmNotification() {
@@ -409,6 +434,7 @@ class ServerForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        releaseKeepAliveLocks()
         stopServer()
         serviceScope.cancel()
         super.onDestroy()

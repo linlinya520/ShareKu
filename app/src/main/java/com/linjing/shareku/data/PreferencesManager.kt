@@ -36,6 +36,7 @@ class PreferencesManager(private val context: Context) {
     val lastCleanupTime: Flow<Long> = context.dataStore.data.map { it[KEY_LAST_CLEAN_TIME] ?: 0L }
     val receiveDir: Flow<String> = context.dataStore.data.map { it[KEY_RECEIVE_DIR] ?: "/sdcard/Download/ShareKu" }
     val enableLocationKeepAlive: Flow<Boolean> = context.dataStore.data.map { it[KEY_LOCATION_KEEPALIVE] ?: true }
+    val uiStyle: Flow<String> = context.dataStore.data.map { it[KEY_UI_STYLE] ?: "material" }
 
     /** Write-safe receive directory: if configured dir is unwritable, fall back to app files dir. */
     fun getReceiveDirFile(context: Context, configuredPath: String): File {
@@ -69,7 +70,7 @@ class PreferencesManager(private val context: Context) {
     suspend fun setLastCleanupTime(time: Long) { context.dataStore.edit { it[KEY_LAST_CLEAN_TIME] = time } }
     suspend fun setReceiveDir(value: String) { context.dataStore.edit { it[KEY_RECEIVE_DIR] = value } }
     suspend fun setEnableLocationKeepAlive(value: Boolean) { context.dataStore.edit { it[KEY_LOCATION_KEEPALIVE] = value } }
-
+    suspend fun setUiStyle(value: String) { context.dataStore.edit { it[KEY_UI_STYLE] = value } }
     companion object {
         private val KEY_PORT = intPreferencesKey("port")
     private val KEY_SHARE_PORT = intPreferencesKey("share_port")
@@ -84,6 +85,7 @@ class PreferencesManager(private val context: Context) {
         private val KEY_UPLOAD_DIR = stringPreferencesKey("upload_dir")
         private val KEY_UPLOAD_SORT_TYPE = booleanPreferencesKey("upload_sort_type")
         private val KEY_CONFIRM = booleanPreferencesKey("confirm")
+    private val KEY_UI_STYLE = stringPreferencesKey("ui_style") // "material" | "miuix"
         private val KEY_SHARED_DIR = stringPreferencesKey("shared_dir")
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")

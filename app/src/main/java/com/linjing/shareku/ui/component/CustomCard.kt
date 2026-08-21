@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareKuAnimationSpecs
 
 @Composable
@@ -60,6 +61,14 @@ fun CustomCard(
     onLongClick: () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
+    // ── MIUI 风格：直接用 miuix 卡片组件 ──
+    if (LocalUiStyle.current == "miuix") {
+        top.yukonga.miuix.kmp.basic.Card(
+            modifier = modifier,
+            onClick = if (clickable) onClick else null
+        ) { content() }
+        return
+    }
     val haptic = LocalHapticFeedback.current
 
     // ── 非点击态：零动画开销 ──

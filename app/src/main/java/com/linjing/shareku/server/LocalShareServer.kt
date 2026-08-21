@@ -85,8 +85,8 @@ class ShareKuServer(
     val uploadDir: File? = null,
     val receiveDir: File? = null,
     val clipboardManager: ClipboardManager? = null,
-    // 连接确认回调：当新IP需要审批时调用，传入IP地址
-    val onNewConnection: ((String) -> Unit)? = null,
+    // 连接确认回调：当新IP需要审批时调用，传入IP地址 + 一次性验证码
+    val onNewConnection: ((String, String) -> Unit)? = null,
     // 直连传输请求回调：发送端IP + 文件名 + 大小 + 临时文件路径
     val onPeerTransfer: ((senderIp: String, fileName: String, fileSize: Long, tempFile: File) -> Unit)? = null,
     // 直连传输接收进度回调（写盘循环中调用，用于接收端进度条/通知）
@@ -108,10 +108,20 @@ class ShareKuServer(
         }
     }
 
-    // IP 连接确认白名单/黑名单/待审批集合
-    val approvedIps = mutableSetOf<String>()
+    // ═══ 连接确认（防 IP 冒用） ═══
+    // 说明：不信任 IP 白名单（局域网内 IP 可被伪造/占用），
+    // 改为「一次性验证码 + 会话令牌」：新 IP 需在手机上看到一次性 4 位码，
+    // 由持有手机的人把码告知访问者；访问者输入码验证通过后获得绑定 IP 的会话令牌。
+    // 即使别人改 IP 成已授权 IP，没有令牌也无法访问。
     val blockedIps = mutableSetOf<String>()
-    val pendingIps = mutableSetOf<String>()
+    // 一次性验证码：ip -> (code, 过期时间)
+    private val pendingCodes = mutableMapOf<String, Pair<String, Long>>()
+    // 会话令牌：token -> (绑定的ip, 过期时间)
+    private val sessionTokens = mutableMapOf<String, Pair<String, Long>>()
+    private val codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    private val random = java.security.SecureRandom()
+    private val TOKEN_TTL_MS = 24L * 3600 * 1000   // 令牌有效期 24 小时
+    private val CODE_TTL_MS = 5L * 60 * 1000       // 验证码有效期 5 分钟
 
     // ═══ Shizuku 受限目录访问 ═══
     // 共享根目录（用于判断是否受限）
@@ -220,6 +230,38 @@ class ShareKuServer(
             // Unauthenticated endpoints
             get("/api/status") {
                 call.respondText("""{"allowUpload":$allowUpload,"allowDelete":$allowDelete,"authRequired":$enableAuth,"webdav":$enableWebDav}""", ContentType.Application.Json)
+            }
+            // 一次性验证码验证端点：验证通过后签发会话令牌（Set-Cookie，绑定IP，24小时有效）
+            post("/api/verify") {
+                val code = call.request.queryParameters["code"]?.trim().orEmpty()
+                val ip = call.request.local.remoteHost
+                val now = System.currentTimeMillis()
+                val entry = pendingCodes[ip]
+                if (entry == null || entry.second < now) {
+                    call.respondText(
+                        """{"ok":false,"error":"验证码已过期，请在手机上重新获取"}""",
+                        ContentType.Application.Json,
+                        HttpStatusCode.Unauthorized
+                    )
+                    return@post
+                }
+                if (!entry.first.equals(code, ignoreCase = true)) {
+                    call.respondText(
+                        """{"ok":false,"error":"验证码错误"}""",
+                        ContentType.Application.Json,
+                        HttpStatusCode.Unauthorized
+                    )
+                    return@post
+                }
+                // 一次性：验证通过立即作废该码
+                pendingCodes.remove(ip)
+                val token = generateToken()
+                sessionTokens[token] = ip to (now + TOKEN_TTL_MS)
+                call.response.headers.append(
+                    HttpHeaders.SetCookie,
+                    "shareku_token=$token; Path=/; HttpOnly; Max-Age=${TOKEN_TTL_MS / 1000}"
+                )
+                call.respondText("""{"ok":true,"token":"$token"}""", ContentType.Application.Json)
             }
             // Peer-to-peer file receive endpoint (raw binary) — requires approval
             post("/api/peer-upload") {
@@ -604,37 +646,81 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
         }
     }
 
-    // 【连接确认】IP白名单检查 —— 首次访问需Android端审批
+    // 【连接确认】一次性验证码 + 会话令牌检查 —— 不信任 IP 白名单
     // 返回 true=放行, false=已拦截(已返回等待页或403)
     private suspend fun checkIp(call: ApplicationCall): Boolean {
         if (!requireConfirm) return true
         val ip = call.request.local.remoteHost
+        val now = System.currentTimeMillis()
         // 本机回环地址永远放行
         if (ip == "127.0.0.1" || ip == "0:0:0:0:0:0:0:1" || ip == "localhost") return true
-        // 已批准 → 放行
-        if (ip in approvedIps) return true
         // 已拉黑 → 403
         if (ip in blockedIps) {
             call.respondText(buildForbiddenHtml(), ContentType.Text.Html, HttpStatusCode.Forbidden)
             return false
         }
-        // 新IP → 加入待审批，发通知，返回等待页
-        if (ip !in pendingIps) {
-            pendingIps.add(ip)
-            // 异步回调，不阻塞当前请求
-            onNewConnection?.invoke(ip)
+        // 有效会话令牌 → 放行（令牌绑定 IP，改 IP 无效）
+        if (hasValidToken(call, ip, now)) return true
+        // 新 IP → 生成一次性验证码并发通知（若已有未过期码则复用，避免重复弹通知）
+        val entry = pendingCodes[ip]
+        if (entry == null || entry.second < now) {
+            val code = generateCode()
+            pendingCodes[ip] = code to (now + CODE_TTL_MS)
+            // 异步回调，不阻塞当前请求（通知栏展示 IP + 一次性码）
+            onNewConnection?.invoke(ip, code)
         }
-        // 返回等待审批页面（浏览器每3秒自动刷新）
+        // 返回等待授权页面（输入一次性验证码）
         call.respondText(buildWaitingHtml(ip), ContentType.Text.Html)
         return false
     }
 
-    // 等待审批的HTML页面 —— 简洁清新，自动刷新
+    /** 校验会话令牌：cookie 中的 shareku_token，或 Basic Auth 密码位（供 WebDAV/资源管理器使用） */
+    private fun hasValidToken(call: ApplicationCall, ip: String, now: Long): Boolean {
+        val token = requestCookie(call, "shareku_token") ?: basicAuthPassword(call) ?: return false
+        val entry = sessionTokens[token] ?: return false
+        return entry.first == ip && entry.second > now
+    }
+
+    /** 手动解析请求 Cookie 头中的指定字段 */
+    private fun requestCookie(call: ApplicationCall, name: String): String? {
+        val h = call.request.header("cookie") ?: return null
+        return h.split(";")
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("$name=", ignoreCase = true) }
+            ?.substringAfter('=')
+    }
+
+    /** 从 Authorization: Basic 头中提取密码位（用户名:密码 → 密码） */
+    private fun basicAuthPassword(call: ApplicationCall): String? {
+        val h = call.request.header("authorization") ?: return null
+        if (!h.startsWith("Basic ", ignoreCase = true)) return null
+        return try {
+            val decoded = String(java.util.Base64.getDecoder().decode(h.substring(6).trim()), Charsets.UTF_8)
+            decoded.substringAfter(':', "")
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 生成 4 位一次性验证码（62 字符集：26大写 + 26小写 + 10数字） */
+    private fun generateCode(): String {
+        val sb = StringBuilder(4)
+        repeat(4) { sb.append(codeChars[random.nextInt(codeChars.length)]) }
+        return sb.toString()
+    }
+
+    /** 生成 32 位十六进制会话令牌 */
+    private fun generateToken(): String {
+        val b = ByteArray(16)
+        random.nextBytes(b)
+        return b.joinToString("") { "%02x".format(it) }
+    }
+
+    // 等待授权的HTML页面 —— 输入一次性验证码（码由手机端通知栏显示，仅可使用一次）
     private fun buildWaitingHtml(ip: String): String {
         return """<!DOCTYPE html>
 <html lang="zh">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta http-equiv="refresh" content="3">
 <title>等待授权 - ShareKu</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -643,22 +729,56 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
  align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
 .card{background:#fff;border-radius:20px;padding:48px 40px;text-align:center;
  box-shadow:0 1px 3px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.08);max-width:400px;margin:20px}
-.spinner{width:48px;height:48px;border:3px solid #dde4e1;border-top-color:#50998b;
- border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 24px}
-@keyframes spin{to{transform:rotate(360deg)}}
 h1{font-size:20px;font-weight:600;margin-bottom:8px;color:#2d3436}
 p{font-size:14px;color:#636e72;line-height:1.5}
 .ip{display:inline-block;background:#e8f3f0;color:#3d7a6e;padding:2px 10px;
  border-radius:6px;font-family:monospace;font-size:13px;margin:4px 0}
+.code{display:block;width:160px;margin:20px auto;padding:12px 16px;font-size:24px;
+ text-align:center;letter-spacing:8px;font-family:monospace;border:2px solid #dde4e1;
+ border-radius:12px;outline:none;text-transform:uppercase}
+.code:focus{border-color:#50998b}
+.btn{display:block;width:100%;padding:12px;font-size:15px;font-weight:600;
+ background:#50998b;color:#fff;border:none;border-radius:12px;cursor:pointer}
+.btn:disabled{opacity:.5}
+#msg{margin-top:14px;font-size:13px;min-height:18px}
+#msg.err{color:#d38c8c}
+#msg.ok{color:#3d7a6e}
 .hint{margin-top:20px;font-size:12px;color:#b2bec3}
+.tok{margin-top:14px;font-size:12px;color:#3d7a6e;word-break:break-all;display:none}
 </style></head>
 <body>
 <div class="card">
- <div class="spinner"></div>
- <h1>等待设备授权</h1>
+ <h1>连接需要授权</h1>
  <p>你的设备 <span class="ip">$ip</span><br>正在请求访问 ShareKu</p>
- <p class="hint">请在手机上批准此连接 · 页面每3秒自动刷新</p>
+ <p style="margin-top:12px">请输入手机上显示的一次性验证码</p>
+ <input class="code" id="code" maxlength="4" autocomplete="off" autocapitalize="characters">
+ <button class="btn" id="btn" onclick="submitCode()">验证并访问</button>
+ <p id="msg"></p>
+ <p class="tok" id="tok"></p>
+ <p class="hint">验证码仅可使用一次 · 5分钟内有效</p>
 </div>
+<script>
+async function submitCode(){
+ var code=document.getElementById('code').value.trim();
+ var msg=document.getElementById('msg'), btn=document.getElementById('btn');
+ if(code.length!=4){ msg.className='err'; msg.textContent='请输入4位验证码'; return; }
+ btn.disabled=true; msg.className=''; msg.textContent='验证中...';
+ try{
+  var r=await fetch('/api/verify?code='+encodeURIComponent(code),{method:'POST'});
+  var j=await r.json().catch(function(){return{};});
+  if(r.ok && j.ok){
+   msg.className='ok'; msg.textContent='验证成功，正在进入...';
+   document.getElementById('tok').style.display='block';
+   document.getElementById('tok').textContent='WebDAV/映射Z盘密码(24小时有效): '+j.token;
+   setTimeout(function(){location.href='/';},600);
+  }else{
+   msg.className='err'; msg.textContent=(j.error||'验证码错误或已过期');
+   btn.disabled=false;
+  }
+ }catch(e){ msg.className='err'; msg.textContent='网络错误，请重试'; btn.disabled=false; }
+}
+document.getElementById('code').addEventListener('keydown',function(e){ if(e.key==='Enter') submitCode(); });
+</script>
 </body></html>""".trimIndent()
     }
 
@@ -812,13 +932,14 @@ p{font-size:14px;color:#636e72;line-height:1.5}
                 val path = call.request.uri.removePrefix("/webdav")
                 val file = resolveWebDavPath(path)
                 val depth = call.request.header("Depth") ?: "infinity"
+                val baseUrl = "${call.request.local.scheme}://${call.request.local.localHost}:${call.request.local.localPort}"
                 if (file != null && file.exists()) {
-                    appendPropfindResponse(sb, file, path)
+                    appendPropfindResponse(sb, file, path, baseUrl)
                     // Depth 1: also list immediate children of directories
                     if (file.isDirectory && (depth == "1" || depth == "infinity")) {
                         file.listFiles()?.forEach { child ->
                             val childPath = if (path.endsWith("/")) "$path${child.name}" else "$path/${child.name}"
-                            appendPropfindResponse(sb, child, childPath)
+                            appendPropfindResponse(sb, child, childPath, baseUrl)
                         }
                     }
                 }
@@ -900,17 +1021,29 @@ p{font-size:14px;color:#636e72;line-height:1.5}
         }
     }
 
-    private fun appendPropfindResponse(sb: StringBuilder, file: File, path: String) {
-        val href = "/webdav${if (path.startsWith("/")) path else "/$path"}"
+    private fun appendPropfindResponse(sb: StringBuilder, file: File, path: String, baseUrl: String) {
+        val href = "$baseUrl/webdav${encodeDavPath(path)}"
         sb.append("<D:response><D:href>$href</D:href>")
         sb.append("<D:propstat><D:prop>")
         if (file.isDirectory) {
             sb.append("<D:resourcetype><D:collection/></D:resourcetype>")
+            sb.append("<D:getcontentlength>0</D:getcontentlength>")
+        } else {
+            sb.append("<D:resourcetype/>")
+            sb.append("<D:getcontenttype>${guessContentType(file)}</D:getcontenttype>")
+            sb.append("<D:getcontentlength>${file.length()}</D:getcontentlength>")
         }
-        sb.append("<D:getcontentlength>${file.length()}</D:getcontentlength>")
         sb.append("<D:getlastmodified>${java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US).format(java.util.Date(file.lastModified()))}</D:getlastmodified>")
         sb.append("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>")
         sb.append("</D:response>")
+    }
+
+    // URL 编码 WebDAV href 路径（逐段编码，保留 /；空格用 %20，Windows 要求）
+    private fun encodeDavPath(path: String): String {
+        if (path.isEmpty() || path == "/") return "/"
+        return path.split("/").joinToString("/") { seg ->
+            if (seg.isEmpty()) "" else java.net.URLEncoder.encode(seg, "UTF-8").replace("+", "%20")
+        }
     }
 
     private fun guessContentType(file: File): ContentType {

@@ -20,11 +20,14 @@ fun ShareThemeWrapper(content: @Composable () -> Unit) {
     val dynamicColor by AppSingletons.preferencesManager.dynamicColor.collectAsState(initial = true)
     val paletteOrdinal by AppSingletons.preferencesManager.paletteStyleOrdinal.collectAsState(initial = 0)
     val paletteStyle = PaletteStyle.entries.getOrElse(paletteOrdinal) { PaletteStyle.TONAL_SPOT }
+    val initialUiStyle = runBlocking { AppSingletons.preferencesManager.uiStyle.first() }
+    val uiStyle by AppSingletons.preferencesManager.uiStyle.collectAsState(initial = initialUiStyle)
 
     LocalShareTheme(
         themeMode = ThemeMode.fromName(themeModeName),
         dynamicColor = dynamicColor,
-        paletteStyle = paletteStyle
+        paletteStyle = paletteStyle,
+        uiStyle = uiStyle
     ) {
         Surface(modifier = Modifier.fillMaxSize()) {
             content()

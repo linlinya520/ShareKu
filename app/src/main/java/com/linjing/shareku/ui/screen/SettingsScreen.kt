@@ -15,7 +15,11 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.linjing.shareku.ui.component.AppTopBar
+import com.linjing.shareku.ui.component.MiuixSettingsGroup
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.theme.LocalUiStyle
+import androidx.compose.foundation.clickable
 
 /** aShellYou风格 — 顶部动画图片 + first/middle/last R角衔接卡片列表 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,19 +43,13 @@ fun SettingsScreen(
         label = "pulse"
     )
 
+    val isMiuix = LocalUiStyle.current == "miuix"
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("设置", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+            AppTopBar(
+                title = "设置",
+                onBack = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }
             )
         }
     ) { paddingValues ->
@@ -82,44 +80,60 @@ fun SettingsScreen(
                 SettingEntry("关于", "版本信息 · 开发者 · 致谢", Icons.Default.Info, onAbout),
             )
 
-            items.forEachIndexed { index, entry ->
-                val isFirst = index == 0
-                val isLast = index == items.lastIndex
-                val isOnly = items.size == 1
-
+            if (isMiuix) {
+                // ── MIUI 风格：整组 miuix Card + preference 组件（自带分隔线） ──
                 item {
-                    CustomCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        topStartCorner = if (isFirst || isOnly) 24.dp else 4.dp,
-                        topEndCorner = if (isFirst || isOnly) 24.dp else 4.dp,
-                        bottomStartCorner = if (isLast || isOnly) 24.dp else 4.dp,
-                        bottomEndCorner = if (isLast || isOnly) 24.dp else 4.dp,
-                        border = null,
-                        onClick = entry.onClick
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(entry.icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(16.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(entry.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                                Text(entry.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MiuixSettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                        items.forEach { entry ->
+                            top.yukonga.miuix.kmp.preference.ArrowPreference(
+                                title = entry.title,
+                                summary = entry.subtitle,
+                                onClick = entry.onClick
+                            )
                         }
                     }
                 }
+            } else {
+                // ── Material 风格：first/middle/last R角衔接卡片 ──
+                items.forEachIndexed { index, entry ->
+                    val isFirst = index == 0
+                    val isLast = index == items.lastIndex
+                    val isOnly = items.size == 1
 
-                // Divider between cards (not after last)
-                if (!isLast) {
                     item {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 0.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
+                        CustomCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            topStartCorner = if (isFirst || isOnly) 24.dp else 4.dp,
+                            topEndCorner = if (isFirst || isOnly) 24.dp else 4.dp,
+                            bottomStartCorner = if (isLast || isOnly) 24.dp else 4.dp,
+                            bottomEndCorner = if (isLast || isOnly) 24.dp else 4.dp,
+                            border = null,
+                            onClick = entry.onClick
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 20.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(entry.icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(16.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                    Text(entry.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    // Divider between cards (not after last)
+                    if (!isLast) {
+                        item {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 0.dp),
+                                thickness = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+                        }
                     }
                 }
             }

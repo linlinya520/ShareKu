@@ -25,3 +25,7 @@ setup_android_env.sh
 app/build/
 ShareKu-*.apk
 *.idsig
+.miuix-local/
+ShareKu_1.1.10.apk
+
+shareku-miuix-src/

@@ -179,16 +179,38 @@ if(p)p.style.display='none';
 function sendClip(){var v=document.getElementById('clipIn').value.trim();if(!v||!ws||ws.readyState!==1)return;ws.send('clipboard:'+v);document.getElementById('clipIn').value='';showToast('已发送')}
 function getClip(){if(ws&&ws.readyState===1)ws.send('get_clipboard')}
 function downloadMapBat(){
- var hostname = location.hostname;
- var port = location.port || '8080';
- var uncPath = '\\\\' + hostname + '@' + port + '\\webdav';
- var script = '@echo off\r\nchcp 65001 >nul\r\necho 正在将 ShareKu 映射为 Z: 盘...\r\necho.\r\n:: 1. 启动 WebClient 服务\r\nnet start WebClient >nul 2>&1\r\n:: 2. 允许 HTTP 基本认证\r\nreg add \"HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters\" /v BasicAuthLevel /t REG_DWORD /d 2 /f >nul 2>&1\r\n:: 3. 重启 WebClient\r\nnet stop WebClient >nul 2>&1\r\nnet start WebClient >nul 2>&1\r\n:: 4. 清除旧映射\r\nnet use Z: /delete >nul 2>&1\r\n:: 5. 映射驱动器\r\nnet use Z: ' + uncPath + ' /persistent:no\r\nif %errorlevel%==0 (\r\n echo [成功] 已映射 Z: 盘\r\n explorer Z:\r\n) else (\r\n echo [失败] 尝试备用方案：直接打开资源管理器\r\n start ' + location.protocol + '//' + location.host + '/webdav\r\n)\r\npause\r\n';
- var blob = new Blob([script], {type: 'application/bat'});
- var a = document.createElement('a');
- a.href = URL.createObjectURL(blob);
- a.download = 'ShareKu-MapZ.bat';
+ var hostname=location.hostname;
+ var port=location.port||'8080';
+ var uncPath='\\\\'+hostname+'@'+port+'\\webdav';
+ var wd=location.protocol+'//'+location.host+'/webdav';
+ var L=[];
+ L.push('@echo off');
+ L.push('title ShareKu WebDAV Mapping');
+ L.push('echo ============================================');
+ L.push('echo   ShareKu WebDAV Mapping');
+ L.push('echo ============================================');
+ L.push('echo.');
+ L.push('echo Mapping Z: drive...');
+ L.push('net use Z: '+uncPath+' /persistent:no');
+ L.push('if %errorlevel%==0 (');
+ L.push(' echo.');
+ L.push(' echo [OK] Z: drive mapped successfully.');
+ L.push(' echo Opening in Explorer...');
+ L.push(' explorer Z:');
+ L.push(') else (');
+ L.push(' echo.');
+ L.push(' echo [FAILED] Error code: %errorlevel%');
+ L.push(' echo Browser: '+wd);
+ L.push(' start '+wd);
+ L.push(')');
+ L.push('pause');
+ var script=L.join('\r\n');
+ var blob=new Blob([script],{type:'application/bat'});
+ var a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);
+ a.download='ShareKu-MapZ.bat';
  a.click();
- setTimeout(function(){URL.revokeObjectURL(a.href)}, 5000);
+ setTimeout(function(){URL.revokeObjectURL(a.href)},5000);
  showToast('映射脚本已下载');
 }
 function showToast(msg){t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}

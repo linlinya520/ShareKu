@@ -1,6 +1,9 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AppTopBar
+import com.linjing.shareku.ui.component.AppSwitch
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +27,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.component.MiuixExpandableSelect
+import com.linjing.shareku.ui.component.MiuixSettingsGroup
+import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import com.linjing.shareku.ui.theme.ThemeMode
 import com.linjing.shareku.ui.theme.color.PaletteStyle
@@ -50,7 +56,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("外观体验", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -74,6 +80,51 @@ fun AppearanceScreen(onBack: () -> Unit) {
         ) {
             Spacer(Modifier.height(8.dp))
 
+            // ═══ 界面风格 ═══
+            Text("界面风格", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+            val uiStyle by prefs.uiStyle.collectAsState(initial = "material")
+            if (LocalUiStyle.current == "miuix") {
+                MiuixSettingsGroup(Modifier.fillMaxWidth()) {
+                    MiuixExpandableSelect(
+                        title = "界面风格",
+                        options = listOf("Material 3", "MIUI 风格"),
+                        selectedIndex = if (uiStyle == "miuix") 1 else 0,
+                        onSelected = { idx ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            scope.launch { prefs.setUiStyle(if (idx == 1) "miuix" else "material") }
+                        }
+                    )
+                }
+            } else {
+                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    listOf("material" to "Material 3", "miuix" to "MIUI 风格").forEach { (value, label) ->
+                        ListItem(
+                            headlineContent = { Text(label, style = MaterialTheme.typography.bodyLarge) },
+                            supportingContent = {
+                                Text(
+                                    if (value == "miuix") "MIUI 组件风格（禁用莫奈取色）" else "Google Material 设计（支持莫奈取色）",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            trailingContent = {
+                                RadioButton(selected = uiStyle == value, onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    scope.launch { prefs.setUiStyle(value) }
+                                })
+                            },
+                            modifier = Modifier.clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                scope.launch { prefs.setUiStyle(value) }
+                            }
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
             // ═══ 深色模式 ═══
             Text("深色模式", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
@@ -88,29 +139,49 @@ fun AppearanceScreen(onBack: () -> Unit) {
                 )
             }
 
-            modeEntries.forEachIndexed { i, entry ->
-                val selected = currentMode == entry.mode
-                val isSingle = modeEntries.size == 1
-                CustomCard(
-                    cornerRadius = when { isSingle -> 24.dp; i == 0 -> 24.dp; i == modeEntries.lastIndex -> 24.dp; else -> 4.dp },
-                    colors = if (selected)
-                        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                    else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
-                    border = null,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
-                        scope.launch { prefs.setThemeMode(entry.mode.name) }
-                    }
-                ) {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Icon(entry.icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(16.dp))
-                        Text(entry.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        RadioButton(selected = selected, onClick = {
+            if (LocalUiStyle.current == "miuix") {
+                // ── MIUI 风格：miuix 展开式下拉选择 ──
+                MiuixSettingsGroup(Modifier.fillMaxWidth()) {
+                    MiuixExpandableSelect(
+                        title = "外观模式",
+                        options = listOf("跟随系统", "浅色", "深色"),
+                        selectedIndex = when (currentMode) {
+                            ThemeMode.LIGHT -> 1
+                            ThemeMode.DARK -> 2
+                            else -> 0
+                        },
+                        onSelected = { idx ->
+                            haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                            val mode = when (idx) { 1 -> ThemeMode.LIGHT; 2 -> ThemeMode.DARK; else -> ThemeMode.SYSTEM }
+                            scope.launch { prefs.setThemeMode(mode.name) }
+                        }
+                    )
+                }
+            } else {
+                modeEntries.forEachIndexed { i, entry ->
+                    val selected = currentMode == entry.mode
+                    val isSingle = modeEntries.size == 1
+                    CustomCard(
+                        cornerRadius = when { isSingle -> 24.dp; i == 0 -> 24.dp; i == modeEntries.lastIndex -> 24.dp; else -> 4.dp },
+                        colors = if (selected)
+                            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+                        border = null,
+                        onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
                             scope.launch { prefs.setThemeMode(entry.mode.name) }
-                        })
+                        }
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(entry.icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Text(entry.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            RadioButton(selected = selected, onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                                scope.launch { prefs.setThemeMode(entry.mode.name) }
+                            })
+                        }
                     }
                 }
             }
@@ -148,7 +219,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    AppSwitch(
                         checked = dynamicColor,
                         enabled = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S,
                         onCheckedChange = {

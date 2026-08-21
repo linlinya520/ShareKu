@@ -12,8 +12,10 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -22,6 +24,16 @@ import androidx.core.view.WindowCompat
 import com.linjing.shareku.ui.theme.color.PaletteStyle
 import com.linjing.shareku.ui.theme.color.createDynamicScheme
 import com.linjing.shareku.ui.theme.color.toComposeColorScheme
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ThemeColorSpec
+import top.yukonga.miuix.kmp.theme.ThemeController
+import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
+import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
+import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightColorScheme
+
+/** 全局 UI 风格（"material" | "miuix"），组件层据此条件渲染 */
+val LocalUiStyle = staticCompositionLocalOf { "material" }
 
 private fun generateColorScheme(paletteStyle: PaletteStyle, darkTheme: Boolean): ColorScheme {
     val seedArgb = 0xFF6750A4.toInt()
@@ -55,6 +67,7 @@ fun LocalShareTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
     paletteStyle: PaletteStyle = PaletteStyle.TONAL_SPOT,
+    uiStyle: String = "material", // "material" | "miuix"
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -91,9 +104,32 @@ fun LocalShareTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(LocalUiStyle provides uiStyle) {
+        if (uiStyle == "miuix") {
+            // MIUI 风格：ThemeController 以当前主题主色为 keyColor 生成 miuix 配色（对齐参考实现 Spec2021）
+            val miuixController = remember(darkTheme, colorScheme.primary) {
+                ThemeController(
+                    colorSchemeMode = if (darkTheme) ColorSchemeMode.MonetDark else ColorSchemeMode.MonetLight,
+                    keyColor = colorScheme.primary,
+                    paletteStyle = ThemePaletteStyle.TonalSpot,
+                    colorSpec = ThemeColorSpec.Spec2021
+                )
+            }
+            MiuixTheme(
+                controller = miuixController
+            ) {
+                MaterialTheme(
+                    colorScheme = colorScheme,
+                    typography = Typography,
+                    content = content
+                )
+            }
+        } else {
+            MaterialTheme(
+                colorScheme = colorScheme,
+                typography = Typography,
+                content = content
+            )
+        }
+    }
 }

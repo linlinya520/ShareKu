@@ -19,6 +19,8 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // 优先本地修复版 miuix（minCompileSdk 37→36，官方 repo 尚无 android-37 platform）
+        maven { url = uri("${rootDir}/.miuix-local") }
         maven("https://maven.aliyun.com/repository/google")
         maven("https://maven.aliyun.com/repository/central")
         maven("https://maven.aliyun.com/repository/public")

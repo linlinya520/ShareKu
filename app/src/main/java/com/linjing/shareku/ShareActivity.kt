@@ -50,6 +50,7 @@ import com.linjing.shareku.service.ServerForegroundService
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.component.QrCodeCard
 import com.linjing.shareku.ui.theme.LocalShareTheme
+import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -90,8 +91,10 @@ class ShareActivity : ComponentActivity() {
             val themeModeName by AppSingletons.preferencesManager.themeMode.collectAsState(initial = initialTheme)
             val paletteOrdinal by AppSingletons.preferencesManager.paletteStyleOrdinal.collectAsState(initial = 0)
             val paletteStyle = com.linjing.shareku.ui.theme.color.PaletteStyle.entries
-                .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
-            LocalShareTheme(themeMode = ThemeMode.fromName(themeModeName), paletteStyle = paletteStyle) {
+        .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
+    val initialUiStyle = runBlocking { AppSingletons.preferencesManager.uiStyle.first() }
+    val uiStyle by AppSingletons.preferencesManager.uiStyle.collectAsState(initial = initialUiStyle)
+    LocalShareTheme(themeMode = ThemeMode.fromName(themeModeName), paletteStyle = paletteStyle, uiStyle = uiStyle) {
                 ShareSheetDialog(
                     files = cacheFiles,
                     url = url,
@@ -288,6 +291,7 @@ fun ShareSheetDialog(
     val clipboardManager = LocalClipboardManager.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val isMiuix = LocalUiStyle.current == "miuix"
     // 分享界面独立运行状态（与主页服务器互不影响）
     var shareRunning by remember { mutableStateOf(false) }
     var showCopied by remember { mutableStateOf(false) }
@@ -505,11 +509,21 @@ fun ShareSheetDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = {
-                                portInput = currentPort.toString()
-                                showPortDialog = true
-                            }) {
-                                Text("修改", fontSize = MaterialTheme.typography.labelMedium.fontSize)
+                            if (isMiuix) {
+                                top.yukonga.miuix.kmp.basic.TextButton(
+                                    text = "修改",
+                                    onClick = {
+                                        portInput = currentPort.toString()
+                                        showPortDialog = true
+                                    }
+                                )
+                            } else {
+                                TextButton(onClick = {
+                                    portInput = currentPort.toString()
+                                    showPortDialog = true
+                                }) {
+                                    Text("修改", fontSize = MaterialTheme.typography.labelMedium.fontSize)
+                                }
                             }
                         }
                     }
@@ -544,12 +558,23 @@ fun ShareSheetDialog(
                             Spacer(Modifier.width(8.dp))
                             Text("设备直连发送", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                showPeerPanel = !showPeerPanel
-                                if (!showPeerPanel) peerDiscovery.stopScan()
-                            }) {
-                                Text(if (showPeerPanel) "收起" else "选择设备")
+                            if (isMiuix) {
+                                top.yukonga.miuix.kmp.basic.TextButton(
+                                    text = if (showPeerPanel) "收起" else "选择设备",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        showPeerPanel = !showPeerPanel
+                                        if (!showPeerPanel) peerDiscovery.stopScan()
+                                    }
+                                )
+                            } else {
+                                TextButton(onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    showPeerPanel = !showPeerPanel
+                                    if (!showPeerPanel) peerDiscovery.stopScan()
+                                }) {
+                                    Text(if (showPeerPanel) "收起" else "选择设备")
+                                }
                             }
                         }
 
@@ -569,10 +594,20 @@ fun ShareSheetDialog(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    TextButton(onClick = {
-                                        peerScanning = true
-                                        peerDiscovery.rescan()
-                                    }) { Text("重新扫描") }
+                                    if (isMiuix) {
+                                        top.yukonga.miuix.kmp.basic.TextButton(
+                                            text = "重新扫描",
+                                            onClick = {
+                                                peerScanning = true
+                                                peerDiscovery.rescan()
+                                            }
+                                        )
+                                    } else {
+                                        TextButton(onClick = {
+                                            peerScanning = true
+                                            peerDiscovery.rescan()
+                                        }) { Text("重新扫描") }
+                                    }
                                 }
                                 peers.forEach { peer ->
                                     Row(
@@ -627,34 +662,59 @@ fun ShareSheetDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Start/Stop sharing button
-                Button(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                if (isMiuix) {
+                    top.yukonga.miuix.kmp.basic.Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            if (shareRunning) {
+                                onStopSharing()
+                                shareRunning = false
+                            } else {
+                                onStartSharing(currentPort)
+                                shareRunning = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         if (shareRunning) {
-                            // Stop —— 只停本分享服务器
-                            onStopSharing()
-                            shareRunning = false
-                        } else {
-                            // Start
-                            onStartSharing(currentPort)
-                            shareRunning = true
+                            Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(26.dp),
-                    colors = if (shareRunning) ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    ) else ButtonDefaults.buttonColors()
-                ) {
-                    if (shareRunning) {
-                        Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (shareRunning) "停止共享" else "启动共享",
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                    Text(
-                        if (shareRunning) "停止共享" else "启动共享",
-                        fontWeight = FontWeight.Bold
-                    )
+                } else {
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            if (shareRunning) {
+                                // Stop —— 只停本分享服务器
+                                onStopSharing()
+                                shareRunning = false
+                            } else {
+                                // Start
+                                onStartSharing(currentPort)
+                                shareRunning = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = if (shareRunning) ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        ) else ButtonDefaults.buttonColors()
+                    ) {
+                        if (shareRunning) {
+                            Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            if (shareRunning) "停止共享" else "启动共享",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -662,28 +722,65 @@ fun ShareSheetDialog(
 
     // Port dialog
     if (showPortDialog) {
-        AlertDialog(
-            onDismissRequest = { showPortDialog = false },
-            title = { Text("修改端口") },
-            text = {
-                OutlinedTextField(
-                    value = portInput, singleLine = true,
-                    onValueChange = { portInput = it },
-                    label = { Text("端口号") },
-                    placeholder = { Text("8080") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    portInput.toIntOrNull()?.let { p ->
-                        currentPort = p
+        if (isMiuix) {
+            Dialog(
+                onDismissRequest = { showPortDialog = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("修改端口", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3)
+                        Spacer(Modifier.height(12.dp))
+                        top.yukonga.miuix.kmp.basic.TextField(
+                            value = portInput,
+                            onValueChange = { portInput = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = "端口号",
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            top.yukonga.miuix.kmp.basic.TextButton(text = "取消", onClick = { showPortDialog = false })
+                            Spacer(Modifier.padding(start = 8.dp))
+                            top.yukonga.miuix.kmp.basic.Button(
+                                onClick = {
+                                    portInput.toIntOrNull()?.let { p -> currentPort = p }
+                                    showPortDialog = false
+                                }
+                            ) { Text("确认") }
+                        }
                     }
-                    showPortDialog = false
-                }) { Text("确认") }
-            },
-            dismissButton = { TextButton(onClick = { showPortDialog = false }) { Text("取消") } }
-        )
+                }
+            }
+        } else {
+            AlertDialog(
+                onDismissRequest = { showPortDialog = false },
+                title = { Text("修改端口") },
+                text = {
+                    OutlinedTextField(
+                        value = portInput, singleLine = true,
+                        onValueChange = { portInput = it },
+                        label = { Text("端口号") },
+                        placeholder = { Text("8080") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        portInput.toIntOrNull()?.let { p ->
+                            currentPort = p
+                        }
+                        showPortDialog = false
+                    }) { Text("确认") }
+                },
+                dismissButton = { TextButton(onClick = { showPortDialog = false }) { Text("取消") } }
+            )
+        }
     }
 }
