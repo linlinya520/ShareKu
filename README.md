@@ -20,7 +20,10 @@
 - 端口自动 Fallback：端口被占用自动尝试下一个
 - 分享即共享：从任意应用分享文件，生成二维码 / 链接
 - ZIP 打包下载：多文件打包下载，带大小限制保护
-- 体积优化：R8 裁切 + 精简依赖，APK 约 2.8MB
+- 体积优化：R8 裁切 + 精简依赖，APK 约 3MB
+- 网页端拖拽上传：拖文件/文件夹到浏览器即上传，支持深色模式
+- 控制中心快捷磁贴：一键启动服务器并打开 App
+- 桌面小组件：可调整大小，实时显示运行状态与访问地址
 - 按 ABI 分架构打包：arm64-v8a / armeabi-v7a / x86_64 / x86 独立 APK
 
 ## 技术栈
@@ -40,10 +43,10 @@
 
 | 架构 | 适用设备 | 文件 |
 |------|----------|------|
-| arm64-v8a | 绝大多数 2015 年后的手机/平板（推荐） | ShareKu-v1.3.0-arm64-v8a.apk |
-| armeabi-v7a | 较老的 32 位 ARM 设备 | ShareKu-v1.3.0-armeabi-v7a.apk |
-| x86_64 | 模拟器、部分平板/盒子 | ShareKu-v1.3.0-x86_64.apk |
-| x86 | 老式模拟器、部分盒子 | ShareKu-v1.3.0-x86.apk |
+| arm64-v8a | 绝大多数 2015 年后的手机/平板（推荐） | ShareKu-v1.3.1-arm64-v8a.apk |
+| armeabi-v7a | 较老的 32 位 ARM 设备 | ShareKu-v1.3.1-armeabi-v7a.apk |
+| x86_64 | 模拟器、部分平板/盒子 | ShareKu-v1.3.1-x86_64.apk |
+| x86 | 老式模拟器、部分盒子 | ShareKu-v1.3.1-x86.apk |
 
 不确定架构时，优先选择 arm64-v8a。模拟器用户可在设置中查看 ABI。
 
@@ -113,7 +116,7 @@ cd ShareKu
 
 - [miuix](https://github.com/compose-miuix-ui/miuix) — MIUI 组件库
 - CINXZ — miuix 组件参考
-- [aShell](https://github.com/holzschu/a-shell) — UI 设计灵感
+- [aShellYou](https://github.com/DP-Hridayan/aShellYou) — UI 设计灵感
 - [InstallerX](https://github.com/iamr0s/InstallerX) — 技术参考
 - [Shizuku](https://github.com/RikkaApps/Shizuku) — 高权限访问方案
 

@@ -27,10 +27,15 @@
   <button class="btn-mini" onclick="sendClip()">发送</button>
   <button class="btn-mini" onclick="getClip()">拉取</button>
  </div>
- <button class="btn-mini map-btn" onclick="downloadMapBat()">📥 下载映射脚本</button>
+ <button class="btn-mini map-btn" onclick="downloadMapBat()">下载映射脚本</button>
 </div>
 <div class="clip-ball" id="clipBall">
  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+</div>
+<div class="dropzone" id="dropzone">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+ <div>松手即可上传到当前目录</div>
+ <div class="dz-sub">支持多文件拖拽</div>
 </div>
 <div class="toast" id="toast"></div>
 <script src="/assets/script.js"></script>

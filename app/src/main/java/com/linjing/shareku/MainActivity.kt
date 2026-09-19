@@ -17,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
 import com.linjing.shareku.ui.navigation.LocalShareNavHost
 import com.linjing.shareku.ui.theme.LocalShareTheme
 import com.linjing.shareku.ui.theme.ThemeMode
+import com.linjing.shareku.widget.ShareKuWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
@@ -29,6 +30,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         cleanCacheIfNeeded()
+        handleAutoStart(intent)
+        ShareKuWidgetProvider.refresh(this)
         setContent {
             val prefs = AppSingletons.preferencesManager
             val themeModeName by prefs.themeMode.collectAsState(initial = "SYSTEM")
@@ -48,6 +51,22 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     LocalShareNavHost(navController = navController, modifier = Modifier.fillMaxSize())
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleAutoStart(intent)
+        ShareKuWidgetProvider.refresh(this)
+    }
+
+    /** QS 磁贴 / 桌面小组件点击时带 extra_auto_start=true，自动启动服务器 */
+    private fun handleAutoStart(intent: Intent?) {
+        if (intent?.getBooleanExtra(ShareKuWidgetProvider.EXTRA_AUTO_START, false) == true) {
+            CoroutineScope(Dispatchers.IO).launch {
+                ServerStarter.start(applicationContext)
+                ShareKuWidgetProvider.refresh(applicationContext)
             }
         }
     }

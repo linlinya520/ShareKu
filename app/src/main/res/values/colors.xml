@@ -8,4 +8,11 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#FF50998B</color>
+    <color name="widget_bg">#FFFFFFFF</color>
+    <color name="widget_border">#FFDDE4E1</color>
+    <color name="widget_text">#FF2D3436</color>
+    <color name="widget_text2">#FF636E72</color>
+    <color name="widget_accent">#FF50998B</color>
+    <color name="widget_dot_off">#FFC9D3CF</color>
+    <color name="widget_bg2">#FFF3F8F6</color>
 </resources>

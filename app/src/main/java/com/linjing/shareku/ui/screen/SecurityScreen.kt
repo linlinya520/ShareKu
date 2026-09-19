@@ -50,6 +50,17 @@ fun SecurityScreen(onBack: () -> Unit) {
     val authPassword by prefs.authPassword.collectAsState(initial = "admin")
     val requireConfirm by prefs.requireConnectionConfirm.collectAsState(initial = false)
     var passwordVisible by remember { mutableStateOf(false) }
+    // 输入框使用本地 state，避免 DataStore 异步回写导致光标跳动
+    var usernameInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
+    var fieldsInitialized by remember { mutableStateOf(false) }
+    LaunchedEffect(authUsername, authPassword) {
+        if (!fieldsInitialized) {
+            usernameInput = authUsername
+            passwordInput = authPassword
+            fieldsInitialized = true
+        }
+    }
 
     BackHandler { onBack() }
 
@@ -102,9 +113,9 @@ fun SecurityScreen(onBack: () -> Unit) {
                 }
                 if (enableAuth) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        OutlinedTextField(authUsername, { scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("用户名") }, shape = RoundedCornerShape(12.dp))
+                        OutlinedTextField(usernameInput, { usernameInput = it; scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("用户名") }, shape = RoundedCornerShape(12.dp))
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(authPassword, { scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("密码") }, shape = RoundedCornerShape(12.dp),
+                        OutlinedTextField(passwordInput, { passwordInput = it; scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("密码") }, shape = RoundedCornerShape(12.dp),
                             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, if (passwordVisible) "隐藏" else "显示") } }
@@ -128,9 +139,9 @@ fun SecurityScreen(onBack: () -> Unit) {
                         )
                         AnimatedVisibility(visible = enableAuth, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                                OutlinedTextField(authUsername, { scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("用户名") }, shape = RoundedCornerShape(12.dp))
+                                OutlinedTextField(usernameInput, { usernameInput = it; scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("用户名") }, shape = RoundedCornerShape(12.dp))
                                 Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(authPassword, { scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("密码") }, shape = RoundedCornerShape(12.dp),
+                                OutlinedTextField(passwordInput, { passwordInput = it; scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("密码") }, shape = RoundedCornerShape(12.dp),
                                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                     trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, if (passwordVisible) "隐藏" else "显示") } }

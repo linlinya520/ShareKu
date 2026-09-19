@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.linjing.shareku.R
 import com.linjing.shareku.ui.component.ZoomableImage
+import com.linjing.shareku.ui.component.optionalAssetPainter
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import kotlinx.coroutines.launch
 
@@ -130,7 +131,7 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             modifier = Modifier.fillMaxWidth())
                         // Tap to zoom avatar
                         ZoomableImage(
-                            painter = painterResource(R.drawable.ic_author),
+                            painter = optionalAssetPainter("optional/author.jpg", R.drawable.ic_author),
                             contentDescription = "作者头像",
                             modifier = Modifier.size(72.dp),
                             normalShape = RoundedCornerShape(20.dp)
@@ -172,7 +173,7 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.fillMaxWidth())
                         ZoomableImage(
-                            painter = painterResource(R.drawable.ic_donate_qr),
+                            painter = optionalAssetPainter("optional/donate_qr.png", R.drawable.ic_donate_qr),
                             contentDescription = "微信捐赠二维码",
                             modifier = Modifier.size(160.dp),
                             contentScale = ContentScale.Fit,
@@ -202,7 +203,7 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Image(
-                        painter = painterResource(R.drawable.miuix_author),
+                        painter = optionalAssetPainter("optional/miuix_author.jpg", R.drawable.miuix_author),
                         contentDescription = "CINXZ",
                         modifier = Modifier.size(48.dp).clip(CircleShape).clickable {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://b23.tv/GkVlxo5")))
@@ -224,8 +225,8 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     TextButton(onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/holzschu/a-shell")))
-                    }) { Text("aShell", color = MaterialTheme.colorScheme.primary) }
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/DP-Hridayan/aShellYou")))
+                    }) { Text("aShellYou", color = MaterialTheme.colorScheme.primary) }
                     TextButton(onClick = {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/iamr0s/InstallerX")))
                     }) { Text("InstallerX", color = MaterialTheme.colorScheme.primary) }

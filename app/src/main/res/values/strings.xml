@@ -76,4 +76,5 @@
     <string name="settings_overwrite_subtitle">允许覆盖已有文件（WebDAV 映射必须）</string>
     <string name="settings_delete_title">允许删除</string>
     <string name="settings_delete_subtitle">允许已连接的设备删除文件</string>
+    <string name="widget_desc">一键查看/启动 ShareKu 服务器</string>
 </resources>

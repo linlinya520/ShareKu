@@ -44,6 +44,7 @@
             android:name=".MainActivity"
             android:enableOnBackInvokedCallback="true"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name"
             android:theme="@style/Theme.MaterialShareKu">
             <intent-filter>
@@ -164,6 +165,31 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
+        </receiver>
+
+        <!-- 控制中心快捷磁贴：一键启动服务器并打开 App -->
+        <service
+            android:name=".service.ShareKuTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_foreground"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- 桌面小组件：显示状态与地址，点击启动服务器 -->
+        <receiver
+            android:name=".widget.ShareKuWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.linjing.shareku.action.WIDGET_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/shareku_widget_info" />
         </receiver>
 
         <!-- File Provider for sharing URIs -->

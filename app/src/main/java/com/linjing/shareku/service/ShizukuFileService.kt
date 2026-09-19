@@ -6,7 +6,7 @@ import java.io.File
 /**
  * Shizuku UserService：由 Shizuku 以 shell 身份（root/shell uid）反射创建。
  *
- * ⚠️ 关键：**不是** android.app.Service！参照官方 demo，UserService 是
+ * 关键：**不是** android.app.Service！参照官方 demo，UserService 是
  * 普通类实现自定义 Binder Stub，Shizuku starter 通过无参构造函数
  * 直接反射实例化，拿到的实例本身就是 IBinder。
  *

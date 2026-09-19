@@ -595,7 +595,7 @@ AnimatedContent(
                     ) { running ->
                         if (running) {
                             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("🔆 服务运行中", style = MaterialTheme.typography.titleMedium,
+                                Text("服务运行中", style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 QrCodeCard(url = url, modifier = Modifier.size(200.dp))
@@ -708,9 +708,9 @@ AnimatedContent(
                             val locPermOk = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || hasLocationPermission()
                             val locSvcOk = isLocationServiceOn()
                             when {
-                                !locPermOk -> Text("⚠️ 未授权定位权限，点击启动时将弹窗引导授权",
+                                !locPermOk -> Text("未授权定位权限，点击启动时将弹窗引导授权",
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                                !locSvcOk -> Text("⚠️ 系统定位服务已关闭，需开启才能保活",
+                                !locSvcOk -> Text("系统定位服务已关闭，需开启才能保活",
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                             }
                         }

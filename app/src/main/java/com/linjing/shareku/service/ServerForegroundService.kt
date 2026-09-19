@@ -312,7 +312,7 @@ class ServerForegroundService : Service() {
             else -> "${"%.1f".format(total.toDouble() / (1024 * 1024))}MB"
         }
         val notify = NotificationCompat.Builder(this, ShareKuApp.CHANNEL_SERVER)
-            .setContentTitle("📥 正在接收 $fileName")
+            .setContentTitle("正在接收 $fileName")
             .setContentText("$sizeStr / $totalStr ($pct%)")
             .setSmallIcon(android.R.drawable.ic_menu_save)
             .setPriority(NotificationCompat.PRIORITY_LOW)

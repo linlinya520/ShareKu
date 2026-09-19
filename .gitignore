@@ -13,8 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
-*.jpg
-*.png
+/*.jpg
+/*.png
 aShellYou-master/
 InstallerX-Revived-main/
 setup_android_env.sh
@@ -29,3 +29,12 @@ ShareKu-*.apk
 ShareKu_1.1.10.apk
 
 shareku-miuix-src/
+
+# 第三方参考 APK / 反编译产物（不上传）
+原子笔记*
+/17872799793171a72f5aa57ff9a51aa8f6b9b2832b43d15fc7c8e.jpg
+*_src/
+
+# 参考 APK（闹钟时钟）
+闹钟时钟*
+闹钟*

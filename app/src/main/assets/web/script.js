@@ -153,7 +153,7 @@ xhr.send(fd);
 var upSent=0,upSaved=0,upTotal=0,upBytes=0;
 function renderUp(name){
 var pct=upSaved;
-var txt='📤 网络已传 '+(upSent>=100?'完成':upSent+'%')+' | 💾 服务器保存 '+pct+'% ('+fmtSize(upBytes)+(upTotal>0?' / '+fmtSize(upTotal):'')+')';
+var txt='网络已传 '+(upSent>=100?'完成':upSent+'%')+' | 服务器保存 '+pct+'% ('+fmtSize(upBytes)+(upTotal>0?' / '+fmtSize(upTotal):'')+')';
 showProg(txt,pct);
 }
 function showProg(txt,pct){
@@ -275,3 +275,55 @@ window.addEventListener('popstate',function(e){if(e.state&&e.state.p!==undefined
 // 初始加载：从URL hash恢复路径
 (function(){var h=location.hash.slice(1);if(h){currentPath='';load(decodeURIComponent(h))}})();
 document.addEventListener('keydown',function(e){if(e.key==='Escape')clearSelection()});
+
+// ═══ 拖拽上传（Drop to Upload） ═══
+(function(){
+ var dz=null,armed=false;
+ function el(){ if(!dz) dz=document.getElementById('dropzone'); return dz; }
+ async function walk(entry,out){
+  if(entry.isFile){
+   var f=await new Promise(function(res,rej){ entry.file(res,rej); });
+   out.push(f);
+  } else if(entry.isDirectory){
+   var rd=entry.createReader(), batch;
+   do{
+    batch=await new Promise(function(res){ rd.readEntries(res); });
+    for(var i=0;i<batch.length;i++){ await walk(batch[i],out); }
+   }while(batch.length);
+  }
+ }
+ async function arm(){
+  if(armed) return;
+  try{ var r=await fetch('/api/status'); var st=await r.json(); if(!st.allowUpload) return; }catch(e){ return; }
+  armed=true; if(!el()) return;
+  var counter=0;
+  window.addEventListener('dragenter',function(e){ e.preventDefault(); counter++; el().classList.add('on'); });
+  window.addEventListener('dragover',function(e){ e.preventDefault(); try{e.dataTransfer.dropEffect='copy'}catch(x){} });
+  window.addEventListener('dragleave',function(e){ e.preventDefault(); counter--; if(counter<=0){ counter=0; el().classList.remove('on'); } });
+  window.addEventListener('drop',async function(e){
+   e.preventDefault(); counter=0; el().classList.remove('on');
+   var items=e.dataTransfer.items, files=[];
+   try{
+    if(items&&items.length&&items[0].webkitGetAsEntry){
+     var es=[];
+     for(var i=0;i<items.length;i++){ var en=items[i].webkitGetAsEntry(); if(en) es.push(en); }
+     for(var j=0;j<es.length;j++){ await walk(es[j],files); }
+    } else {
+     for(var k=0;k<e.dataTransfer.files.length;k++) files.push(e.dataTransfer.files[k]);
+    }
+   }catch(x){}
+   if(!files.length) return;
+   showToast('开始上传 '+files.length+' 个文件');
+   var ok=0,fail=0;
+   for(var n=0;n<files.length;n++){
+    var done=false;
+    try{ done=await uploadOne(files[n],n+1,files.length); }catch(x){ done=false; }
+    if(done) ok++; else fail++;
+   }
+   showToast('上传完成: '+ok+'/'+files.length+' 成功'+(fail>0?' ('+fail+' 失败)':''));
+   load(currentPath);
+  });
+ }
+ if(document.readyState==='complete'||document.readyState==='interactive'){ setTimeout(arm,300); }
+ else { document.addEventListener('DOMContentLoaded',function(){ setTimeout(arm,300); }); }
+})();

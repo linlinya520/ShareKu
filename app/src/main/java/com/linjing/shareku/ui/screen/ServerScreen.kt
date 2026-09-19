@@ -37,6 +37,8 @@ fun ServerScreen(onBack: () -> Unit) {
     val prefs = AppSingletons.preferencesManager
     val haptic = LocalHapticFeedback.current
     val port by prefs.port.collectAsState(initial = 8080)
+    var portInput by remember { mutableStateOf(port.toString()) }
+    LaunchedEffect(port) { if (portInput.toIntOrNull() != port) portInput = port.toString() }
     val enableWebDav by prefs.enableWebDav.collectAsState(initial = true)
 
     BackHandler { onBack() }
@@ -62,8 +64,8 @@ fun ServerScreen(onBack: () -> Unit) {
                             Text("当前端口: $port", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         top.yukonga.miuix.kmp.basic.TextField(
-                            value = port.toString(),
-                            onValueChange = { v -> v.toIntOrNull()?.let { scope.launch { prefs.setPort(it) } } },
+                            value = portInput,
+                            onValueChange = { v -> portInput = v; v.toIntOrNull()?.let { scope.launch { prefs.setPort(it) } } },
                             modifier = Modifier.width(96.dp),
                             singleLine = true
                         )
@@ -74,8 +76,8 @@ fun ServerScreen(onBack: () -> Unit) {
                         supportingContent = { Text("当前端口: $port", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         trailingContent = {
                             OutlinedTextField(
-                                value = port.toString(), singleLine = true,
-                                onValueChange = { v -> v.toIntOrNull()?.let { scope.launch { prefs.setPort(it) } } },
+                                value = portInput, singleLine = true,
+                                onValueChange = { v -> portInput = v; v.toIntOrNull()?.let { scope.launch { prefs.setPort(it) } } },
                                 modifier = Modifier.width(80.dp), shape = RoundedCornerShape(12.dp),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
