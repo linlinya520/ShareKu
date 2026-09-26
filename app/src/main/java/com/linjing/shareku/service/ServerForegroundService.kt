@@ -134,13 +134,13 @@ class ServerForegroundService : Service() {
                 val webdav = intent.getBooleanExtra(EXTRA_WEBDAV, true)
                 val confirm = intent.getBooleanExtra(EXTRA_CONFIRM, false)
                 val uploadDir = intent.getStringExtra(EXTRA_UPLOAD_DIR)
-                val receiveDir = runBlocking { AppSingletons.preferencesManager.receiveDir.first() }
                 val files = filePaths.map { File(it) }
-                startServer(host, port, files, singleFile, upload, delete, overwrite, auth, authUser, authPass, webdav, confirm, uploadDir?.let { File(it) }, receiveDir)
+                startServer(host, port, files, singleFile, upload, delete, overwrite, auth, authUser, authPass, webdav, confirm, uploadDir?.let { File(it) })
             }
             ACTION_STOP -> {
                 stopServer()
                 AppSingletons.setServerRunning(false)
+                AppSingletons.setServerActualPort(null)
                 stopSelf()
             }
             // 拒绝某IP的连接请求（拉黑）
@@ -160,7 +160,7 @@ class ServerForegroundService : Service() {
         host: String, port: Int, files: List<File>,
         singleFileSandbox: Boolean, upload: Boolean, delete: Boolean, overwrite: Boolean,
         auth: Boolean, authUser: String, authPass: String,
-        webdav: Boolean, confirm: Boolean, uploadDir: File?, receiveDir: String
+        webdav: Boolean, confirm: Boolean, uploadDir: File?
     ) {
         val notification = createNotification(host, port)
         // 仅当用户开启定位保活且已授予定位权限时才附加 location 类型，
@@ -182,10 +182,13 @@ class ServerForegroundService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-        startLocationKeepAlive()
+        serviceScope.launch { startLocationKeepAliveSuspend() }
 
         serviceScope.launch {
             try {
+                // DataStore 读取全部放在 IO 协程内（避免服务启动时阻塞主线程）
+                val receiveDir = AppSingletons.preferencesManager.receiveDir.first()
+                val allowPeer = AppSingletons.preferencesManager.allowPeerReceive.first()
                 val clipboardManager = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
                 server = ShareKuServer(
                     context = this@ServerForegroundService,
@@ -202,6 +205,7 @@ class ServerForegroundService : Service() {
                     requireConfirm = confirm,
                     uploadDir = uploadDir,
                     receiveDir = File(receiveDir),
+                    allowPeerReceive = allowPeer,
                     clipboardManager = clipboardManager,
                     onNewConnection = { ip, code ->
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -210,11 +214,11 @@ class ServerForegroundService : Service() {
                 },
                     onPeerTransfer = { senderIp, fileName, fileSize, tempFile ->
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            // 局域网直连：不再询问，直接保存到接收目录
+                            // 局域网直连：直接保存到接收目录（完成通知中展示来源 IP，便于追溯）
                             val destDir = (server?.receiveDir ?: File(getExternalFilesDir(null), "ShareKu"))
                                 .also { if (!it.exists()) it.mkdirs() }.absolutePath
                             serviceScope.launch {
-                                approveTransfer(tempFile.absolutePath, destDir, fileName)
+                                approveTransfer(tempFile.absolutePath, destDir, fileName, senderIp)
                             }
                         }
                     },
@@ -240,6 +244,14 @@ class ServerForegroundService : Service() {
                         engine = srv.start(host, actualPort)
                         engine.start(wait = false)
                         serverEngine = engine
+                        // 同步实际端口：端口被占用自动 +1 后，通知栏与主页显示的地址保持一致
+                        AppSingletons.setServerActualPort(actualPort)
+                        if (actualPort != port) {
+                            runCatching {
+                                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                                nm.notify(NOTIFICATION_ID, createNotification(host, actualPort))
+                            }
+                        }
                         // Register NSD so other devices can discover us
                         peerDiscovery.registerService(actualPort)
                         break
@@ -254,6 +266,7 @@ class ServerForegroundService : Service() {
                     android.widget.Toast.makeText(this@ServerForegroundService, "服务启动失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                 }
                 AppSingletons.setServerRunning(false)
+                AppSingletons.setServerActualPort(null)
                 stopSelf()
             }
         }
@@ -324,7 +337,7 @@ class ServerForegroundService : Service() {
     }
 
     // ═══ 传输保存核心逻辑（直接保存，不再询问） ═══
-    private suspend fun approveTransfer(tempPath: String, destDir: String, fileName: String) {
+    private suspend fun approveTransfer(tempPath: String, destDir: String, fileName: String, senderIp: String? = null) {
         val tempFile = File(tempPath)
         if (!tempFile.exists()) return
         try {
@@ -341,7 +354,7 @@ class ServerForegroundService : Service() {
             tempFile.copyTo(finalDest, overwrite = true)
             tempFile.delete()
             // 保存完成 → 进度通知变完成通知（100%）
-            showTransferDone(fileName, finalDest.absolutePath)
+            showTransferDone(fileName, finalDest.absolutePath, senderIp)
         } catch (e: Exception) {
             // 目标目录不可写（缺少存储权限等）→ 回退到应用外部目录，不崩溃
             try {
@@ -350,7 +363,7 @@ class ServerForegroundService : Service() {
                 val fallback = File(fallbackDir, tempFile.name.replaceFirst(Regex("^\\d+_"), ""))
                 tempFile.copyTo(fallback, overwrite = true)
                 tempFile.delete()
-                showTransferDone(fileName, fallback.absolutePath)
+                showTransferDone(fileName, fallback.absolutePath, senderIp)
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     android.widget.Toast.makeText(
                         this@ServerForegroundService,
@@ -364,10 +377,11 @@ class ServerForegroundService : Service() {
         }
     }
 
-    private fun showTransferDone(fileName: String, savedPath: String) {
+    private fun showTransferDone(fileName: String, savedPath: String, senderIp: String? = null) {
+        val from = if (senderIp.isNullOrEmpty()) "" else "（来自 $senderIp）"
         val notify = NotificationCompat.Builder(this, ShareKuApp.CHANNEL_CONFIRM)
             .setContentTitle("✅ 已接收 $fileName")
-            .setContentText("已保存到 $savedPath")
+            .setContentText("$from 已保存到 $savedPath")
             .setSmallIcon(android.R.drawable.ic_menu_save)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
@@ -380,9 +394,9 @@ class ServerForegroundService : Service() {
     private var locationManager: LocationManager? = null
     private var locationListener: LocationListener? = null
 
-    private fun startLocationKeepAlive() {
+    private suspend fun startLocationKeepAliveSuspend() {
         // Check if user has enabled location keep-alive in settings
-        val enabled = runBlocking { AppSingletons.preferencesManager.enableLocationKeepAlive.first() }
+        val enabled = AppSingletons.preferencesManager.enableLocationKeepAlive.first()
         if (!enabled) return
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         locationManager = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
@@ -401,7 +415,9 @@ class ServerForegroundService : Service() {
 
     private fun createNotification(host: String, port: Int): Notification {
         val protocol = "http"
-        val address = "$protocol://$host:$port"
+        // 0.0.0.0（未找到网络接口）时展示真实首选 IP，避免通知里出现无效地址
+        val displayHost = if (host == "0.0.0.0") (com.linjing.shareku.server.NetworkUtils().getPrimaryIpAddress() ?: host) else host
+        val address = "$protocol://$displayHost:$port"
 
         val openIntent = PendingIntent.getActivity(
             this,
@@ -436,6 +452,7 @@ class ServerForegroundService : Service() {
     override fun onDestroy() {
         releaseKeepAliveLocks()
         stopServer()
+        AppSingletons.setServerActualPort(null)
         serviceScope.cancel()
         super.onDestroy()
     }

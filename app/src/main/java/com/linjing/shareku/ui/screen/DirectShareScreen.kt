@@ -1,5 +1,6 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.AppTopBar
 import android.content.Intent
 import android.net.Uri
@@ -323,18 +324,18 @@ fun DirectShareScreen(onBack: () -> Unit) {
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("连接") }
                         } else {
-                            OutlinedTextField(
+                            AdaptiveTextField(
                                 value = manualHost, singleLine = true,
                                 onValueChange = { manualHost = it },
-                                label = { Text("IP 地址") },
-                                placeholder = { Text("192.168.1.x") },
+                                label = "IP 地址",
+                                placeholder = "192.168.1.x",
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            OutlinedTextField(
+                            AdaptiveTextField(
                                 value = manualPort, singleLine = true,
                                 onValueChange = { manualPort = it },
-                                label = { Text("端口") },
-                                placeholder = { Text("8080") },
+                                label = "端口",
+                                placeholder = "8080",
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
@@ -552,7 +553,7 @@ fun DirectShareScreen(onBack: () -> Unit) {
 private fun uriToFile(context: android.content.Context, uri: Uri): File? {
     return try {
         // Get real display name from content resolver
-        var name = "file_${System.currentTimeMillis()}"
+        var name: String? = null
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
                 val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -560,11 +561,12 @@ private fun uriToFile(context: android.content.Context, uri: Uri): File? {
             }
         }
         // Fallback: try last path segment (sanitize)
-        if (name == "file_${System.currentTimeMillis()}") {
-            name = uri.lastPathSegment?.replace(":", "_")?.replace("/", "_") ?: name
+        if (name.isNullOrBlank()) {
+            name = uri.lastPathSegment?.replace(":", "_")?.replace("/", "_")
         }
+        if (name.isNullOrBlank()) name = "file_${System.currentTimeMillis()}"
         // Sanitize filename — 只过滤文件系统非法字符，保留中文等 Unicode 字符
-    name = name.replace(Regex("[/\\\\:*?\"<>|\\u0000-\\u001F]"), "_")
+        name = name.replace(Regex("[/\\\\:*?\"<>|\\u0000-\\u001F]"), "_")
         val cacheFile = java.io.File(context.cacheDir, name)
         context.contentResolver.openInputStream(uri)?.use { input ->
             cacheFile.outputStream().use { input.copyTo(it) }

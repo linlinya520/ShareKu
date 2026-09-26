@@ -15,6 +15,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CardElevation
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -22,11 +25,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -70,13 +76,24 @@ fun CustomCard(
         return
     }
     val haptic = LocalHapticFeedback.current
+    val liquid = isLiquidGlassActive()
 
     // ── 非点击态：零动画开销 ──
     if (!clickable) {
-        val staticShape = remember(topStartCorner, topEndCorner, bottomStartCorner, bottomEndCorner) {
-            StaticCornerShape(topStartCorner, topEndCorner, bottomStartCorner, bottomEndCorner)
+        val staticShape = remember(liquid, topStartCorner, topEndCorner, bottomStartCorner, bottomEndCorner) {
+            if (liquid) {
+                RoundedCornerShape(topStartCorner, topEndCorner, bottomEndCorner, bottomStartCorner)
+            } else {
+                StaticCornerShape(topStartCorner, topEndCorner, bottomStartCorner, bottomEndCorner)
+            }
         }
-        Card(modifier = modifier, colors = colors, elevation = elevation, border = border, shape = staticShape) {
+        Card(
+            modifier = modifier.cardGlassSurface(liquid, staticShape),
+            colors = if (liquid) liquidCardColors() else colors,
+            elevation = if (liquid) CardDefaults.cardElevation(defaultElevation = 0.dp) else elevation,
+            border = if (liquid) null else border,
+            shape = staticShape
+        ) {
             content()
         }
         return
@@ -105,11 +122,18 @@ fun CustomCard(
         animationSpec = ShareKuAnimationSpecs.springDp, label = "be"
     )
 
-    val animatedShape = remember(animatedTopStart, animatedTopEnd, animatedBottomStart, animatedBottomEnd) {
-        DynamicCornerShape(
-            topStart = animatedTopStart, topEnd = animatedTopEnd,
-            bottomStart = animatedBottomStart, bottomEnd = animatedBottomEnd
-        )
+    val animatedShape = remember(liquid, animatedTopStart, animatedTopEnd, animatedBottomStart, animatedBottomEnd) {
+        if (liquid) {
+            RoundedCornerShape(
+                topStart = animatedTopStart, topEnd = animatedTopEnd,
+                bottomEnd = animatedBottomEnd, bottomStart = animatedBottomStart
+            )
+        } else {
+            DynamicCornerShape(
+                topStart = animatedTopStart, topEnd = animatedTopEnd,
+                bottomStart = animatedBottomStart, bottomEnd = animatedBottomEnd
+            )
+        }
     }
 
     val animatedScale by animateFloatAsState(
@@ -120,8 +144,12 @@ fun CustomCard(
     Card(
         modifier = modifier
             .hoverable(interactionSource)
-            .graphicsLayer { scaleX = animatedScale; scaleY = animatedScale },
-        colors = colors, elevation = elevation, border = border, shape = animatedShape
+            .graphicsLayer { scaleX = animatedScale; scaleY = animatedScale }
+            .cardGlassSurface(liquid, animatedShape),
+        colors = if (liquid) liquidCardColors() else colors,
+        elevation = if (liquid) CardDefaults.cardElevation(defaultElevation = 0.dp) else elevation,
+        border = if (liquid) null else border,
+        shape = animatedShape
     ) {
         Column(
             modifier = Modifier
@@ -173,4 +201,45 @@ private class DynamicCornerShape(
             ))
         }
     }
+}
+
+/** 液态玻璃卡片配色：容器透明，让 backdrop 玻璃层透出来 */
+@Composable
+private fun liquidCardColors(): CardColors = CardDefaults.cardColors(
+    containerColor = Color.Transparent,
+    contentColor = MaterialTheme.colorScheme.onSurface
+)
+
+/**
+ * 卡片的「毛玻璃 + 液态玻璃」融合表面（省成本版）。
+ *
+ * - 玻璃本体走 liquidGlass(plain = true)：vibrancy + blur + lens，
+ *   不挂库默认 Highlight / Shadow（它们各自是独立离屏层，逐帧录制成本高）；
+ * - 改用「HWUI 高程阴影 + 静态渐变高光边」代替，外观接近、每帧成本低得多。
+ */
+@Composable
+private fun Modifier.cardGlassSurface(enabled: Boolean, shape: Shape): Modifier {
+    if (!enabled) return this
+    return this
+        .shadow(elevation = 8.dp, shape = shape, clip = false)
+        .liquidGlass(
+            shape = shape,
+            surfaceAlpha = 0.14f,
+            blurRadius = 6.dp,
+            dispersion = false,
+            plain = true
+        )
+        .border(
+            border = BorderStroke(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.28f),
+                        Color.White.copy(alpha = 0.05f),
+                        Color.White.copy(alpha = 0.12f)
+                    )
+                )
+            ),
+            shape = shape
+        )
 }

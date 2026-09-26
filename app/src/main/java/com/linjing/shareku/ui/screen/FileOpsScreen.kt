@@ -1,5 +1,6 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.AppTopBar
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.ui.component.AppSwitchRow
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.component.FileBrowserDialog
 import com.linjing.shareku.ui.component.MiuixSettingsGroup
 import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
@@ -33,7 +35,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FileOpsScreen(onBack: () -> Unit) {
+fun FileOpsScreen(onBack: () -> Unit, embedded: Boolean = false) {
     val scope = rememberCoroutineScope()
     val prefs = AppSingletons.preferencesManager
     val haptic = LocalHapticFeedback.current
@@ -41,18 +43,13 @@ fun FileOpsScreen(onBack: () -> Unit) {
     val allowOverwrite by prefs.allowOverwrite.collectAsState(initial = true)
     val allowDelete by prefs.allowDelete.collectAsState(initial = false)
     val receiveDir by prefs.receiveDir.collectAsState(initial = "/sdcard/Download/ShareKu")
-    var showDirDialog by remember { mutableStateOf(false) }
-    var dirInput by remember { mutableStateOf(receiveDir) }
+    val allowPeerReceive by prefs.allowPeerReceive.collectAsState(initial = true)
+    var showDirBrowser by remember { mutableStateOf(false) }
 
-    BackHandler { onBack() }
+    if (!embedded) BackHandler { onBack() }
 
-    Scaffold(
-        topBar = {
-            AppTopBar(title = { Text("文件操作", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } })
-        }
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
+    val body: @Composable (Modifier) -> Unit = { m ->
+        Column(m.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {
 
             Text("权限", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
@@ -85,92 +82,56 @@ fun FileOpsScreen(onBack: () -> Unit) {
                     trailingContent = {
                         if (LocalUiStyle.current == "miuix") {
                             top.yukonga.miuix.kmp.basic.Button(onClick = {
-                                dirInput = receiveDir
-                                showDirDialog = true
+                                showDirBrowser = true
                             }) { Text("更改") }
                         } else {
                             FilledTonalButton(onClick = {
-                                dirInput = receiveDir
-                                showDirDialog = true
+                                showDirBrowser = true
                             }) { Text("更改") }
                         }
                     }
                 )
             }
 
-            if (showDirDialog) {
-                if (LocalUiStyle.current == "miuix") {
-                    Dialog(
-                        onDismissRequest = { showDirDialog = false },
-                        properties = DialogProperties(usePlatformDefaultWidth = false)
-                    ) {
-                        top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-                            Column(Modifier.padding(20.dp)) {
-                                Text("接收文件保存位置", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3)
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    "设备直连接收的文件将保存到此目录",
-                                    color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                top.yukonga.miuix.kmp.basic.TextField(
-                                    value = dirInput,
-                                    onValueChange = { dirInput = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    label = "目录路径",
-                                    singleLine = true
-                                )
-                                Spacer(Modifier.height(20.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    top.yukonga.miuix.kmp.basic.TextButton(text = "取消", onClick = { showDirDialog = false })
-                                    Spacer(Modifier.padding(start = 8.dp))
-                                    top.yukonga.miuix.kmp.basic.Button(
-                                        onClick = {
-                                            scope.launch { prefs.setReceiveDir(dirInput) }
-                                            showDirDialog = false
-                                        },
-                                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColorsPrimary()
-                                    ) { Text("确认") }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    AlertDialog(
-                        onDismissRequest = { showDirDialog = false },
-                        title = { Text("接收文件保存位置") },
-                        text = {
-                            Column {
-                                Text("设备直连接收的文件将保存到此目录",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = dirInput, singleLine = true,
-                                    onValueChange = { dirInput = it },
-                                    label = { Text("目录路径") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                            }
-                        },
-                        confirmButton = {
-                            Button(onClick = {
-                                scope.launch { prefs.setReceiveDir(dirInput) }
-                                showDirDialog = false
-                            }) { Text("确认") }
-                        },
-                        dismissButton = { TextButton(onClick = { showDirDialog = false }) { Text("取消") } }
-                    )
+            // 接收目录选择（自带文件浏览器：支持导航 + Shizuku 受限目录）
+            if (showDirBrowser) {
+                FileBrowserDialog(
+                    initialPath = receiveDir,
+                    onConfirm = { path ->
+                        scope.launch { prefs.setReceiveDir(path) }
+                        showDirBrowser = false
+                    },
+                    onDismiss = { showDirBrowser = false }
+                )
+            }
+
+            // ═══ 设备直连 ═══
+            Text("设备直连", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+            if (LocalUiStyle.current == "miuix") {
+                MiuixSettingsGroup(Modifier.fillMaxWidth()) {
+                    AppSwitchRow("允许接收直连文件", "设备直连接收的文件将保存到上方目录；关闭后拒绝接收", allowPeerReceive) { scope.launch { prefs.setAllowPeerReceive(it) } }
+                }
+            } else {
+                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    AppSwitchRow("允许接收直连文件", "设备直连接收的文件将保存到上方目录；关闭后拒绝接收", allowPeerReceive) { scope.launch { prefs.setAllowPeerReceive(it) } }
                 }
             }
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (embedded) {
+        body(Modifier.fillMaxWidth())
+    } else {
+        Scaffold(
+            topBar = {
+                AppTopBar(title = { Text("文件操作", fontWeight = FontWeight.Bold) },
+                    navigationIcon = { IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } })
+            }
+        ) { pad -> body(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())) }
     }
 }
 

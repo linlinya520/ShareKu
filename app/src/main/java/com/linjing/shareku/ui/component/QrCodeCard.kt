@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,6 +22,8 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.graphics.Color as AndroidColor
 import java.util.EnumMap
 
@@ -28,8 +32,11 @@ fun QrCodeCard(
     url: String,
     modifier: Modifier = Modifier
 ) {
-    val qrBitmap = remember(url) {
-        generateQrCode(url, 512)
+    // 生成放后台线程：512px 逐像素运算在主线程会造成「启动共享」卡顿
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url) {
+        value = withContext(Dispatchers.Default) {
+            generateQrCode(url, 512)
+        }
     }
 
     Surface(
@@ -61,13 +68,15 @@ fun generateQrCode(text: String, size: Int): Bitmap? {
         }
         val writer = QRCodeWriter()
         val bitMatrix = writer.encode(text, BarcodeFormat.QR_CODE, size, size, hints)
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE)
+        // 批量写入像素（setPixels）比逐像素 setPixel 快得多
+        val pixels = IntArray(size * size)
+        for (y in 0 until size) {
+            val row = y * size
+            for (x in 0 until size) {
+                pixels[row + x] = if (bitMatrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE
             }
         }
-        bitmap
+        Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
     } catch (e: Exception) {
         null
     }

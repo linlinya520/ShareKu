@@ -4,10 +4,18 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ShareKuApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // 未捕获崩溃自动落盘（含后台线程），方便无 adb 的设备取证
+        installCrashLogger()
         // :shizuku 进程以 shell 身份运行，无法访问应用私有数据（DataStore），跳过 App 初始化
         val procName = try {
             android.os.Process.myProcessName()
@@ -42,25 +50,45 @@ class ShareKuApp : Application() {
             setShowBadge(true)
         }
         nm.createNotificationChannel(confirmChannel)
+    }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bubbleChannel = NotificationChannel(
-                CHANNEL_BUBBLE,
-                "Share Bubble",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Floating bubble for quick share access"
-                setShowBadge(false)
-                @Suppress("DEPRECATION")
-                setAllowBubbles(true)
-            }
-            nm.createNotificationChannel(bubbleChannel)
+    /**
+     * 未捕获异常（含后台线程）写出到文件：优先 /sdcard/Download，其次外部私有目录 crash/。
+     * 仍调用系统默认处理，保证照常弹崩溃提示。
+     */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val sw = StringWriter()
+                throwable.printStackTrace(PrintWriter(sw))
+                val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+                val text = buildString {
+                    append("time=").append(stamp).append('\n')
+                    append("thread=").append(thread.name).append('\n')
+                    append("device=").append(Build.MODEL)
+                        .append(" | Android ").append(Build.VERSION.RELEASE)
+                        .append(" | ").append(Build.SUPPORTED_ABIS.joinToString()).append('\n')
+                    append("----\n").append(sw.toString())
+                }
+                val name = "ShareKu-crash-" + System.currentTimeMillis() + ".txt"
+                val dirs = listOf(
+                    File("/sdcard/Download"),
+                    File(getExternalFilesDir(null) ?: filesDir, "crash")
+                )
+                dirs.forEach { d ->
+                    try {
+                        d.mkdirs()
+                        File(d, name).writeText(text)
+                    } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {}
+            previous?.uncaughtException(thread, throwable)
         }
     }
 
     companion object {
         const val CHANNEL_SERVER = "localshare_server"
         const val CHANNEL_CONFIRM = "localshare_confirm"
-        const val CHANNEL_BUBBLE = "localshare_bubble"
     }
 }

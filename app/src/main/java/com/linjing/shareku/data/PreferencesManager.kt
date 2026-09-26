@@ -3,6 +3,7 @@ package com.linjing.shareku.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -37,6 +38,23 @@ class PreferencesManager(private val context: Context) {
     val receiveDir: Flow<String> = context.dataStore.data.map { it[KEY_RECEIVE_DIR] ?: "/sdcard/Download/ShareKu" }
     val enableLocationKeepAlive: Flow<Boolean> = context.dataStore.data.map { it[KEY_LOCATION_KEEPALIVE] ?: true }
     val uiStyle: Flow<String> = context.dataStore.data.map { it[KEY_UI_STYLE] ?: "material" }
+    // 全局壁纸 / 布局
+    val wallpaperSource: Flow<String> = context.dataStore.data.map { it[KEY_WALLPAPER_SOURCE] ?: "default" }
+    val wallpaperPath: Flow<String> = context.dataStore.data.map { it[KEY_WALLPAPER_PATH] ?: "" }
+    val wallpaperOverlay: Flow<Float> = context.dataStore.data.map { it[KEY_WALLPAPER_OVERLAY] ?: 0.55f }
+    // 裁剪参数（缩放 + 偏移 + 旋转，由壁纸裁剪界面写入）
+    val wallpaperScale: Flow<Float> = context.dataStore.data.map { it[KEY_WALLPAPER_SCALE] ?: 1f }
+    val wallpaperOffsetX: Flow<Float> = context.dataStore.data.map { it[KEY_WALLPAPER_OFFSET_X] ?: 0f }
+    val wallpaperOffsetY: Flow<Float> = context.dataStore.data.map { it[KEY_WALLPAPER_OFFSET_Y] ?: 0f }
+    val wallpaperRotation: Flow<Float> = context.dataStore.data.map { it[KEY_WALLPAPER_ROTATION] ?: 0f }
+    val layoutMode: Flow<String> = context.dataStore.data.map { it[KEY_LAYOUT_MODE] ?: "classic" }
+    val videoLoop: Flow<Boolean> = context.dataStore.data.map { it[KEY_VIDEO_LOOP] ?: true }
+    val videoAudio: Flow<Boolean> = context.dataStore.data.map { it[KEY_VIDEO_AUDIO] ?: false }
+    val videoVolume: Flow<Float> = context.dataStore.data.map { it[KEY_VIDEO_VOLUME] ?: 1f }
+    // 液态玻璃首次预渲染是否已完成（完成后不再弹出预渲染引导页）
+    val liquidPreRenderDone: Flow<Boolean> = context.dataStore.data.map { it[KEY_LIQUID_PRERENDER_DONE] ?: false }
+    // 设备直连接收开关（关闭后拒绝 /api/peer-upload）
+    val allowPeerReceive: Flow<Boolean> = context.dataStore.data.map { it[KEY_ALLOW_PEER_RECEIVE] ?: true }
 
     /** Write-safe receive directory: if configured dir is unwritable, fall back to app files dir. */
     fun getReceiveDirFile(context: Context, configuredPath: String): File {
@@ -71,6 +89,19 @@ class PreferencesManager(private val context: Context) {
     suspend fun setReceiveDir(value: String) { context.dataStore.edit { it[KEY_RECEIVE_DIR] = value } }
     suspend fun setEnableLocationKeepAlive(value: Boolean) { context.dataStore.edit { it[KEY_LOCATION_KEEPALIVE] = value } }
     suspend fun setUiStyle(value: String) { context.dataStore.edit { it[KEY_UI_STYLE] = value } }
+    suspend fun setWallpaperSource(value: String) { context.dataStore.edit { it[KEY_WALLPAPER_SOURCE] = value } }
+    suspend fun setWallpaperPath(value: String) { context.dataStore.edit { it[KEY_WALLPAPER_PATH] = value } }
+    suspend fun setWallpaperOverlay(value: Float) { context.dataStore.edit { it[KEY_WALLPAPER_OVERLAY] = value } }
+    suspend fun setWallpaperScale(value: Float) { context.dataStore.edit { it[KEY_WALLPAPER_SCALE] = value } }
+    suspend fun setWallpaperOffsetX(value: Float) { context.dataStore.edit { it[KEY_WALLPAPER_OFFSET_X] = value } }
+    suspend fun setWallpaperOffsetY(value: Float) { context.dataStore.edit { it[KEY_WALLPAPER_OFFSET_Y] = value } }
+    suspend fun setWallpaperRotation(value: Float) { context.dataStore.edit { it[KEY_WALLPAPER_ROTATION] = value } }
+    suspend fun setLayoutMode(value: String) { context.dataStore.edit { it[KEY_LAYOUT_MODE] = value } }
+    suspend fun setVideoLoop(value: Boolean) { context.dataStore.edit { it[KEY_VIDEO_LOOP] = value } }
+    suspend fun setVideoAudio(value: Boolean) { context.dataStore.edit { it[KEY_VIDEO_AUDIO] = value } }
+    suspend fun setVideoVolume(value: Float) { context.dataStore.edit { it[KEY_VIDEO_VOLUME] = value } }
+    suspend fun setLiquidPreRenderDone(value: Boolean) { context.dataStore.edit { it[KEY_LIQUID_PRERENDER_DONE] = value } }
+    suspend fun setAllowPeerReceive(value: Boolean) { context.dataStore.edit { it[KEY_ALLOW_PEER_RECEIVE] = value } }
     companion object {
         private val KEY_PORT = intPreferencesKey("port")
     private val KEY_SHARE_PORT = intPreferencesKey("share_port")
@@ -85,7 +116,7 @@ class PreferencesManager(private val context: Context) {
         private val KEY_UPLOAD_DIR = stringPreferencesKey("upload_dir")
         private val KEY_UPLOAD_SORT_TYPE = booleanPreferencesKey("upload_sort_type")
         private val KEY_CONFIRM = booleanPreferencesKey("confirm")
-    private val KEY_UI_STYLE = stringPreferencesKey("ui_style") // "material" | "miuix"
+    private val KEY_UI_STYLE = stringPreferencesKey("ui_style") // "material" | "miuix" | "liquid"
         private val KEY_SHARED_DIR = stringPreferencesKey("shared_dir")
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -94,5 +125,18 @@ class PreferencesManager(private val context: Context) {
         private val KEY_LAST_CLEAN_TIME = longPreferencesKey("last_cleanup_time")
         private val KEY_RECEIVE_DIR = stringPreferencesKey("receive_dir")
         private val KEY_LOCATION_KEEPALIVE = booleanPreferencesKey("location_keepalive")
+        private val KEY_WALLPAPER_SOURCE = stringPreferencesKey("wallpaper_source")
+        private val KEY_WALLPAPER_PATH = stringPreferencesKey("wallpaper_path")
+        private val KEY_WALLPAPER_OVERLAY = floatPreferencesKey("wallpaper_overlay")
+        private val KEY_WALLPAPER_SCALE = floatPreferencesKey("wallpaper_scale")
+        private val KEY_WALLPAPER_OFFSET_X = floatPreferencesKey("wallpaper_offset_x")
+        private val KEY_WALLPAPER_OFFSET_Y = floatPreferencesKey("wallpaper_offset_y")
+        private val KEY_WALLPAPER_ROTATION = floatPreferencesKey("wallpaper_rotation")
+        private val KEY_LAYOUT_MODE = stringPreferencesKey("layout_mode")
+        private val KEY_VIDEO_LOOP = booleanPreferencesKey("video_loop")
+        private val KEY_VIDEO_AUDIO = booleanPreferencesKey("video_audio")
+        private val KEY_VIDEO_VOLUME = floatPreferencesKey("video_volume")
+        private val KEY_LIQUID_PRERENDER_DONE = booleanPreferencesKey("liquid_prerender_done")
+        private val KEY_ALLOW_PEER_RECEIVE = booleanPreferencesKey("allow_peer_receive")
     }
 }

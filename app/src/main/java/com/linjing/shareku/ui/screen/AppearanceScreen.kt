@@ -18,32 +18,47 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import com.linjing.shareku.AppSingletons
+import com.linjing.shareku.CacheUtils
+import com.linjing.shareku.ui.component.AdaptiveSlider
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.component.WallpaperCropDialog
 import com.linjing.shareku.ui.component.MiuixExpandableSelect
 import com.linjing.shareku.ui.component.MiuixSettingsGroup
 import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import com.linjing.shareku.ui.theme.ThemeMode
 import com.linjing.shareku.ui.theme.color.PaletteStyle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppearanceScreen(onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
+    if (!embedded) BackHandler(onBack = onBack)
 
     val scope = rememberCoroutineScope()
     val prefs = AppSingletons.preferencesManager
     val haptic = LocalHapticFeedback.current
     val styles = remember { PaletteStyle.entries.toList() }
+    // 壁纸裁剪/定位界面的待处理文件路径
+    var cropPath by remember { mutableStateOf<String?>(null) }
+    var cropIsVideo by remember { mutableStateOf(false) }
 
     val dynamicColor by prefs.dynamicColor.collectAsState(initial = true)
     val themeModeName by prefs.themeMode.collectAsState(initial = "SYSTEM")
@@ -56,21 +71,23 @@ fun AppearanceScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            AppTopBar(
-                title = { Text("外观体验", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onBack()
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+            if (!embedded) {
+                AppTopBar(
+                    title = { Text("外观体验", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onBack()
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
-            )
+            }
         }
     ) { paddingValues ->
         Column(
@@ -80,6 +97,58 @@ fun AppearanceScreen(onBack: () -> Unit) {
         ) {
             Spacer(Modifier.height(8.dp))
 
+            // ═══ 布局模式 ═══
+            Text("布局模式", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+            Text("经典：主页 + 右上角设置入口；Dock：底部悬浮导航栏（主页/工具/外观/关于）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+            val layoutMode by prefs.layoutMode.collectAsState(initial = "classic")
+            if (LocalUiStyle.current == "miuix") {
+                MiuixSettingsGroup(Modifier.fillMaxWidth()) {
+                    MiuixExpandableSelect(
+                        title = "布局模式",
+                        options = listOf("经典布局", "底部悬浮 Dock"),
+                        selectedIndex = if (layoutMode == "dock") 1 else 0,
+                        onSelected = { idx ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            scope.launch { prefs.setLayoutMode(if (idx == 1) "dock" else "classic") }
+                        }
+                    )
+                }
+            } else {
+                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    listOf("classic" to "经典布局", "dock" to "底部悬浮 Dock").forEach { (value, label) ->
+                        ListItem(
+                            headlineContent = { Text(label, style = MaterialTheme.typography.bodyLarge) },
+                            supportingContent = {
+                                Column {
+                                    Text(
+                                        if (value == "dock") "底部悬浮导航栏，可长按拖动切换页面"
+                                        else "主页 + 右上角设置入口",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            trailingContent = {
+                                RadioButton(selected = layoutMode == value, onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    scope.launch { prefs.setLayoutMode(value) }
+                                })
+                            },
+                            modifier = Modifier.clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                scope.launch { prefs.setLayoutMode(value) }
+                            }
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
             // ═══ 界面风格 ═══
             Text("界面风格", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
@@ -88,23 +157,39 @@ fun AppearanceScreen(onBack: () -> Unit) {
                 MiuixSettingsGroup(Modifier.fillMaxWidth()) {
                     MiuixExpandableSelect(
                         title = "界面风格",
-                        options = listOf("Material 3", "MIUI 风格"),
-                        selectedIndex = if (uiStyle == "miuix") 1 else 0,
+                        options = listOf("Material 3", "MIUI 风格", "液态玻璃"),
+                        selectedIndex = when (uiStyle) {
+                            "miuix" -> 1
+                            "liquid" -> 2
+                            else -> 0
+                        },
                         onSelected = { idx ->
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            scope.launch { prefs.setUiStyle(if (idx == 1) "miuix" else "material") }
+                            scope.launch {
+                                prefs.setUiStyle(
+                                    when (idx) {
+                                        1 -> "miuix"
+                                        2 -> "liquid"
+                                        else -> "material"
+                                    }
+                                )
+                            }
                         }
                     )
                 }
             } else {
                 CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    listOf("material" to "Material 3", "miuix" to "MIUI 风格").forEach { (value, label) ->
+                    listOf("material" to "Material 3", "miuix" to "MIUI 风格", "liquid" to "液态玻璃").forEach { (value, label) ->
                         ListItem(
                             headlineContent = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                             supportingContent = {
                                 Text(
-                                    if (value == "miuix") "MIUI 组件风格（禁用莫奈取色）" else "Google Material 设计（支持莫奈取色）",
+                                    when (value) {
+                                        "miuix" -> "MIUI 组件风格（禁用莫奈取色）"
+                                        "liquid" -> "苹果液态玻璃质感（Android 13+ 折射模糊）"
+                                        else -> "Google Material 设计（支持莫奈取色）"
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -162,7 +247,12 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     val selected = currentMode == entry.mode
                     val isSingle = modeEntries.size == 1
                     CustomCard(
-                        cornerRadius = when { isSingle -> 24.dp; i == 0 -> 24.dp; i == modeEntries.lastIndex -> 24.dp; else -> 4.dp },
+                        // 首项仅上方大圆角、末项仅下方大圆角，中间衔接处统一小圆角，
+                        // 拼起来像一个完整的圆角容器（修复此前首尾四角都大的问题）
+                        topStartCorner = if (isSingle || i == 0) 24.dp else 4.dp,
+                        topEndCorner = if (isSingle || i == 0) 24.dp else 4.dp,
+                        bottomStartCorner = if (isSingle || i == modeEntries.lastIndex) 24.dp else 4.dp,
+                        bottomEndCorner = if (isSingle || i == modeEntries.lastIndex) 24.dp else 4.dp,
                         colors = if (selected)
                             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                         else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
@@ -245,7 +335,11 @@ fun AppearanceScreen(onBack: () -> Unit) {
                 val isSingle = styles.size == 1
 
                 CustomCard(
-                    cornerRadius = when { isSingle -> 24.dp; index == 0 -> 24.dp; index == styles.lastIndex -> 24.dp; else -> 4.dp },
+                    // 同上：首尾只在外侧用大圆角，衔接处统一小圆角
+                    topStartCorner = if (isSingle || index == 0) 24.dp else 4.dp,
+                    topEndCorner = if (isSingle || index == 0) 24.dp else 4.dp,
+                    bottomStartCorner = if (isSingle || index == styles.lastIndex) 24.dp else 4.dp,
+                    bottomEndCorner = if (isSingle || index == styles.lastIndex) 24.dp else 4.dp,
                     colors = if (selected && enabled)
                         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
@@ -283,9 +377,335 @@ fun AppearanceScreen(onBack: () -> Unit) {
                 }
             }
 
+            // ═══ 全局壁纸 ═══
+            Spacer(Modifier.height(16.dp))
+            Text("全局壁纸", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            Text("应用内所有界面的统一背景",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+
+            val context = LocalContext.current
+            val wallpaperSource by prefs.wallpaperSource.collectAsState(initial = "default")
+            val wallpaperOverlay by prefs.wallpaperOverlay.collectAsState(initial = 0.55f)
+            // 动态壁纸提示：系统壁纸为动态壁纸时将走「系统层透出」显示
+            val isLiveWallpaper = remember { com.linjing.shareku.ui.component.isLiveSystemWallpaper(context) }
+            if (isLiveWallpaper) {
+                Text(
+                    "检测到动态壁纸：选择「系统壁纸」时画面将由系统直接透出显示。" +
+                        "动态壁纸持续渲染会略增耗电；该模式下液态玻璃的折射效果不可用（提示：想兼得动态 + 玻璃，可用「本地视频壁纸」选同一个视频文件）。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
+
+            // 选图后：先复制为 pending 暂存文件 → 弹出裁剪/定位界面（确认后才提升为正式壁纸，取消不污染旧壁纸）
+            val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+                if (uri != null) {
+                    scope.launch {
+                        val path = withContext(Dispatchers.IO) { persistWallpaper(context, uri, "custom_wallpaper_pending") }
+                        if (path != null) {
+                            cropIsVideo = false
+                            cropPath = path
+                        }
+                    }
+                }
+            }
+
+            // 选视频后：先复制为 pending 暂存文件 → 弹出裁剪/定位界面（首帧预览）
+            val videoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+                if (uri != null) {
+                    scope.launch {
+                        val path = withContext(Dispatchers.IO) { persistWallpaper(context, uri, "custom_video_pending") }
+                        if (path != null) {
+                            cropIsVideo = true
+                            cropPath = path
+                        }
+                    }
+                }
+            }
+
+            listOf(
+                "default" to "默认壁纸",
+                "image" to "本地图片",
+                "system" to "系统壁纸",
+                "video" to "本地视频"
+            ).forEach { (value, label) ->
+                val selected = wallpaperSource == value
+                val pick: () -> Unit = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                    when (value) {
+                        "image" -> { cropIsVideo = false; imageLauncher.launch("image/*") }
+                        "video" -> videoLauncher.launch("video/*")
+                        else -> scope.launch { prefs.setWallpaperSource(value) }
+                    }
+                }
+                CustomCard(
+                    cornerRadius = 24.dp,
+                    colors = if (selected)
+                        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+                    border = null,
+                    clickable = true,
+                    enableHaptic = true,
+                    onClick = pick
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Image, null, Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text(label, style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        RadioButton(selected = selected, onClick = pick)
+                    }
+                }
+            }
+
+            // ═══ 视频壁纸设置（仅视频壁纸时显示）═══
+            if (wallpaperSource == "video") {
+                Spacer(Modifier.height(16.dp))
+                Text("视频壁纸设置", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+                val videoLoop by prefs.videoLoop.collectAsState(initial = true)
+                val videoAudio by prefs.videoAudio.collectAsState(initial = false)
+                val videoVolume by prefs.videoVolume.collectAsState(initial = 1f)
+                CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 20.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("循环播放", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                Text("播放到结尾后自动重播", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            AppSwitch(checked = videoLoop, onCheckedChange = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                scope.launch { prefs.setVideoLoop(it) }
+                            })
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("播放声音", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                Text("默认静音播放", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            AppSwitch(checked = videoAudio, onCheckedChange = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                scope.launch { prefs.setVideoAudio(it) }
+                            })
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("音量", style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text("${(videoVolume * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary)
+                        }
+                        AdaptiveSlider(
+                            value = videoVolume.coerceIn(0f, 1f),
+                            onValueChange = { scope.launch { prefs.setVideoVolume(it) } },
+                            valueRange = 0f..1f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            // 暗黑遮罩浓度（实时预览）
+            Spacer(Modifier.height(16.dp))
+            Text("暗黑遮罩浓度", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            Text("深色模式下叠加在壁纸上的黑色遮罩透明度",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+            CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("遮罩浓度", style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("${(wallpaperOverlay * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    AdaptiveSlider(
+                        value = wallpaperOverlay.coerceIn(0f, 1f),
+                        onValueChange = { scope.launch { prefs.setWallpaperOverlay(it) } },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            // ═══ 清除本地壁纸占用 ═══
+            Spacer(Modifier.height(16.dp))
+            var wallpaperSizeBytes by remember { mutableStateOf(-1L) }
+            var showClearWallpaperDialog by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                wallpaperSizeBytes = withContext(Dispatchers.IO) {
+                    val dir = File(context.filesDir, "wallpaper")
+                    if (!dir.exists()) 0L else dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                }
+            }
+            CustomCard(
+                cornerRadius = 24.dp,
+                border = null,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    showClearWallpaperDialog = true
+                }
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.DeleteSweep, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("清除本地壁纸占用", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (wallpaperSizeBytes > 0)
+                                "删除已保存的本地壁纸文件（当前占用 ${CacheUtils.formatSize(wallpaperSizeBytes)}）"
+                            else "删除已保存的本地壁纸文件（图片 / 视频）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            // 清除确认弹窗（CustomCard 自动适配 Material / MIUI / 液态玻璃 三套 UI）
+            if (showClearWallpaperDialog) {
+                Dialog(
+                    onDismissRequest = { showClearWallpaperDialog = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    CustomCard(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        cornerRadius = 28.dp,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        clickable = false,
+                        enableHaptic = false
+                    ) {
+                        Column(Modifier.padding(24.dp)) {
+                            Text("清除本地壁纸？", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "将删除已保存的本地壁纸文件（图片 / 视频），并将壁纸切回「默认壁纸」。\n\n清除后当前设置的壁纸将会消失，是否继续？",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val doClear: () -> Unit = {
+                                    showClearWallpaperDialog = false
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            runCatching { File(context.filesDir, "wallpaper").deleteRecursively() }
+                                        }
+                                        wallpaperSizeBytes = 0L
+                                        prefs.setWallpaperPath("")
+                                        prefs.setWallpaperSource("default")
+                                        prefs.setWallpaperScale(1f)
+                                        prefs.setWallpaperOffsetX(0f)
+                                        prefs.setWallpaperOffsetY(0f)
+                                        prefs.setWallpaperRotation(0f)
+                                    }
+                                }
+                                if (LocalUiStyle.current == "miuix") {
+                                    top.yukonga.miuix.kmp.basic.TextButton(text = "取消", onClick = { showClearWallpaperDialog = false })
+                                    Spacer(Modifier.padding(start = 8.dp))
+                                    top.yukonga.miuix.kmp.basic.Button(
+                                        onClick = doClear,
+                                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColorsPrimary()
+                                    ) { Text("清除") }
+                                } else {
+                                    TextButton(onClick = { showClearWallpaperDialog = false }) { Text("取消") }
+                                    Spacer(Modifier.padding(start = 8.dp))
+                                    Button(
+                                        onClick = doClear,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error,
+                                            contentColor = MaterialTheme.colorScheme.onError
+                                        )
+                                    ) { Text("清除") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(32.dp))
+            // Dock 布局下给底部悬浮栏留出空间，避免内容被 Dock 挡住
+            if (embedded) Spacer(Modifier.height(120.dp))
         }
     }
+
+    // 壁纸裁剪 / 定位界面（图片/视频通用：视频用首帧预览）
+    // 注：此块在 Column 作用域之外，需在此层重新取文件操作 Context
+    val fileCtx = LocalContext.current
+    cropPath?.let { path ->
+        WallpaperCropDialog(
+            imagePath = path,
+            isVideo = cropIsVideo,
+            onConfirm = { s, ox, oy, rot ->
+                scope.launch {
+                    // 确认后才把 pending 暂存文件提升为正式壁纸文件（覆盖旧壁纸）
+                    val finalPath = withContext(Dispatchers.IO) {
+                        try {
+                            val dir = File(fileCtx.filesDir, "wallpaper").apply { mkdirs() }
+                            val dest = File(dir, if (cropIsVideo) "custom_video" else "custom_wallpaper")
+                            val src = File(path)
+                            if (dest.exists()) dest.delete()
+                            if (!src.renameTo(dest)) {
+                                src.copyTo(dest, overwrite = true)
+                                src.delete()
+                            }
+                            dest.absolutePath
+                        } catch (_: Exception) { path }
+                    }
+                    prefs.setWallpaperPath(finalPath)
+                    prefs.setWallpaperScale(s)
+                    prefs.setWallpaperOffsetX(ox)
+                    prefs.setWallpaperOffsetY(oy)
+                    prefs.setWallpaperRotation(rot)
+                    prefs.setWallpaperSource(if (cropIsVideo) "video" else "image")
+                }
+                cropPath = null
+            },
+            onDismiss = {
+                // 取消：删除暂存文件，旧壁纸保持原样
+                scope.launch(Dispatchers.IO) { runCatching { File(path).delete() } }
+                cropPath = null
+            }
+        )
+    }
+}
+
+/** 把选中的文件 URI 复制到应用私有目录，返回可持久访问的路径 */
+private fun persistWallpaper(context: android.content.Context, uri: android.net.Uri, fileName: String): String? {
+    return try {
+        val dir = File(context.filesDir, "wallpaper").apply { mkdirs() }
+        val f = File(dir, fileName)
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            f.outputStream().use { out -> input.copyTo(out) }
+        }
+        f.absolutePath
+    } catch (_: Exception) { null }
 }
 
 private data class ModeChip(val mode: ThemeMode, val label: String, val icon: ImageVector)

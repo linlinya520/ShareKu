@@ -1,13 +1,7 @@
 package com.linjing.shareku.server
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import android.net.wifi.WifiManager
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.net.NetworkInterface
-import java.util.Locale
 
 data class NetworkInterfaceInfo(
     val name: String,
@@ -61,7 +55,15 @@ class NetworkUtils {
     fun getPreferredInterface(preferred: String): NetworkInterfaceInfo? {
         val all = getAllInterfaces()
         if (preferred == "auto") {
-            return all.firstOrNull { it.isWifi } ?: all.firstOrNull { it.isEthernet } ?: all.firstOrNull()
+            // 优先局域网可用接口：WiFi → 有线/USB 共享 → 排除蜂窝/VPN 虚接口 → 兜底
+            return all.firstOrNull { it.isWifi }
+                ?: all.firstOrNull { it.isEthernet }
+                ?: all.firstOrNull { it.name.startsWith("rndis") || it.name.contains("usb") }
+                ?: all.firstOrNull {
+                    !it.name.startsWith("rmnet") && !it.name.startsWith("tun") &&
+                        !it.name.startsWith("ppp") && !it.name.startsWith("dummy")
+                }
+                ?: all.firstOrNull()
         }
         return all.find { it.name == preferred }
     }

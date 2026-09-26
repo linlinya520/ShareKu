@@ -84,6 +84,8 @@ class ShareKuServer(
     val requireConfirm: Boolean = false,
     val uploadDir: File? = null,
     val receiveDir: File? = null,
+    // 直连接收开关：关闭后 /api/peer-upload 拒绝任何请求（可在 文件操作 页配置）
+    val allowPeerReceive: Boolean = true,
     val clipboardManager: ClipboardManager? = null,
     // 连接确认回调：当新IP需要审批时调用，传入IP地址 + 一次性验证码
     val onNewConnection: ((String, String) -> Unit)? = null,
@@ -118,6 +120,8 @@ class ShareKuServer(
     private val pendingCodes = mutableMapOf<String, Pair<String, Long>>()
     // 会话令牌：token -> (绑定的ip, 过期时间)
     private val sessionTokens = mutableMapOf<String, Pair<String, Long>>()
+    // 验证码失败限速：ip -> (失败次数, 锁定截止时间)
+    private val verifyFailures = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Long>>()
     private val codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     private val random = java.security.SecureRandom()
     private val TOKEN_TTL_MS = 24L * 3600 * 1000   // 令牌有效期 24 小时
@@ -199,6 +203,9 @@ class ShareKuServer(
 
             // WebSocket for real-time logs & clipboard sync
     webSocket("/ws") {
+        // 与所有 HTTP 端点一致的安全门禁：未通过则直接断开（静默拒绝，不发页面）
+        if (!checkIpGate(this.call)) return@webSocket
+        if (!checkAuthSilent(this.call)) return@webSocket
         wsClients.add(this)
         try {
             for (frame in incoming) {
@@ -236,6 +243,16 @@ class ShareKuServer(
                 val code = call.request.queryParameters["code"]?.trim().orEmpty()
                 val ip = call.request.local.remoteHost
                 val now = System.currentTimeMillis()
+                // 失败限速：同一 IP 连续失败 5 次后锁定 5 分钟（防暴力枚举）
+                val fail = verifyFailures[ip]
+                if (fail != null && fail.first >= 5 && now < fail.second) {
+                    call.respondText(
+                        """{"ok":false,"error":"尝试次数过多，请5分钟后再试"}""",
+                        ContentType.Application.Json,
+                        HttpStatusCode.TooManyRequests
+                    )
+                    return@post
+                }
                 val entry = pendingCodes[ip]
                 if (entry == null || entry.second < now) {
                     call.respondText(
@@ -246,6 +263,8 @@ class ShareKuServer(
                     return@post
                 }
                 if (!entry.first.equals(code, ignoreCase = true)) {
+                    val cnt = if (fail == null || now > fail.second) 1 else fail.first + 1
+                    verifyFailures[ip] = cnt to (now + 5 * 60_000)
                     call.respondText(
                         """{"ok":false,"error":"验证码错误"}""",
                         ContentType.Application.Json,
@@ -255,6 +274,7 @@ class ShareKuServer(
                 }
                 // 一次性：验证通过立即作废该码
                 pendingCodes.remove(ip)
+                verifyFailures.remove(ip)
                 val token = generateToken()
                 sessionTokens[token] = ip to (now + TOKEN_TTL_MS)
                 call.response.headers.append(
@@ -263,9 +283,14 @@ class ShareKuServer(
                 )
                 call.respondText("""{"ok":true,"token":"$token"}""", ContentType.Application.Json)
             }
-            // Peer-to-peer file receive endpoint (raw binary) — requires approval
-            post("/api/peer-upload") {
-                val destDir = receiveDir ?: File(context.getExternalFilesDir(null), "ShareKu").also { it.mkdirs() }
+            // Peer-to-peer file receive endpoint (raw binary)
+    // 安全：需在设置中开启「允许设备直连接收文件」，且请求须携带 ShareKu 发送端标记头（过滤盲目扫描/网页注入）
+    post("/api/peer-upload") {
+        if (!allowPeerReceive || call.request.header("X-ShareKu-Peer") != "1") {
+            call.respondText("""{"error":"peer upload disabled"}""", ContentType.Application.Json, HttpStatusCode.Forbidden)
+            return@post
+        }
+        val destDir = receiveDir ?: File(context.getExternalFilesDir(null), "ShareKu").also { it.mkdirs() }
                 if (!destDir.exists()) destDir.mkdirs()
                 try {
                     val rawName = call.request.queryParameters["name"] ?: "received_${System.currentTimeMillis()}"
@@ -311,7 +336,8 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
                 if (!checkIp(call)) return@get
                 if (!checkAuth(call)) { call.respondText("""{"error":"Unauthorized"}""", status = HttpStatusCode.Unauthorized); return@get }
                 val clip = clipboardManager?.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                call.respondText("""{"text":"${clip.replace("\"","\\\"")}"}""", ContentType.Application.Json)
+                // 完整 JSON 转义（此前只转义引号，换行/反斜杠会返回破损 JSON）
+                call.respondText("""{"text":"${jsonEscape(clip)}"}""", ContentType.Application.Json)
             }
             get("/api/files") {
                 if (!checkIp(call)) return@get
@@ -405,7 +431,7 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
                     }
                     logRequest(call, 404)
                     val dbg = if (dir == null) "null" else "stat=${st != null}"
-                    call.respondText("""{"error":"404","debug":"$dbg","path":"$reqPath"}""", status = HttpStatusCode.NotFound)
+                    call.respondText("""{"error":"404","debug":"$dbg","path":"${jsonEscape(reqPath)}"}""", status = HttpStatusCode.NotFound)
                     return@get
                 }
                 if (dir != null && dir.isDirectory && isAllowed(dir)) {
@@ -418,7 +444,7 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
                 } else {
                     logRequest(call, 404)
                     val dbg = if (dir == null) "null" else "exist=${dir.exists()} isDir=${dir.isDirectory}"
-                    call.respondText("""{"error":"404","debug":"$dbg","path":"$reqPath"}""", status = HttpStatusCode.NotFound)
+                    call.respondText("""{"error":"404","debug":"$dbg","path":"${jsonEscape(reqPath)}"}""", status = HttpStatusCode.NotFound)
                 }
             }
             get("/api/zip") {
@@ -465,8 +491,8 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
                             multipart.forEachPart { part ->
                                 if (part is PartData.FileItem) {
                                     val rawName = part.originalFileName ?: queryName ?: "upload_${System.currentTimeMillis()}"
-                                    val origName = URLDecoder.decode(rawName, "UTF-8")
-                                        .replace("/", "_").replace("\\", "_")
+                                    // 统一清洗：URL 解码失败保留原文，替换文件系统非法字符（保留中文等 Unicode）
+                                    val origName = sanitizeFileName(rawName)
                                     var dest = File(root, origName)
                                     var counter = 1
                                     while (dest.exists()) {
@@ -487,14 +513,14 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
                                             if (r <= 0) break
                                             fos.write(buf, 0, r)
                                             written += r
-                                            if (written - lastBroadcast >= 1024 * 1024) {
-                                                lastBroadcast = written
-                                                broadcastAsync("""{"type":"up","name":"${dest.name.replace("\"", "\\\"")}","written":$written,"total":$totalHint}""")
-                                            }
+if (written - lastBroadcast >= 1024 * 1024) {
+                                                    lastBroadcast = written
+                                                    broadcastAsync("""{"type":"up","name":"${jsonEscape(dest.name)}","written":$written,"total":$totalHint}""")
+                                                }
                                         }
                                     }
                                     // 写盘完成，广播真实保存大小
-                                    broadcastAsync("""{"type":"up_done","name":"${dest.name.replace("\"", "\\\"")}","size":${dest.length()}}""")
+                                    broadcastAsync("""{"type":"up_done","name":"${jsonEscape(dest.name)}","size":${dest.length()}}""")
                                     saved = 1
                                     savedName = dest.name
                                     savedSize = dest.length()
@@ -502,13 +528,11 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
                                 part.dispose()
                             }
                             logRequest(call, 200, savedSize)
-                            call.respondText("""{"uploaded":$saved,"name":"$savedName","size":$savedSize}""", ContentType.Application.Json)
+                            call.respondText("""{"uploaded":$saved,"name":"${jsonEscape(savedName)}","size":$savedSize}""", ContentType.Application.Json)
                         } else {
                             // 兼容 raw 字节流上传（curl/脚本等）
                             val channel = call.request.receiveChannel()
-                            val origName = (queryName ?: "upload_${System.currentTimeMillis()}")
-                                .let { URLDecoder.decode(it, "UTF-8") }
-                                .replace("/", "_").replace("\\", "_")
+                            val origName = sanitizeFileName(queryName ?: "upload_${System.currentTimeMillis()}")
                             var dest = File(root, origName)
                             var counter = 1
                             while (dest.exists()) {
@@ -527,7 +551,7 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
                                 }
                             }
                             logRequest(call, 200, dest.length())
-                            call.respondText("""{"uploaded":1,"name":"${dest.name}","size":${dest.length()}}""", ContentType.Application.Json)
+                            call.respondText("""{"uploaded":1,"name":"${jsonEscape(dest.name)}","size":${dest.length()}}""", ContentType.Application.Json)
                         }
                     } catch (e: Exception) {
                         logRequest(call, 500)
@@ -538,8 +562,15 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
             if (allowDelete) {
                 delete("/api/delete") {
                     if (!checkIp(call)) return@delete
+                    if (!checkAuth(call)) { call.respondText("""{"error":"Unauthorized"}""", status = HttpStatusCode.Unauthorized); return@delete }
                     val path = call.request.queryParameters["path"] ?: ""
                     val file = resolvePath(path)
+                    // 禁止删除共享根目录本身（防止空路径/根路径把整个共享目录一锅端）
+                    val root = getRootDir()
+                    if (file != null && root != null && file.absolutePath == root.absolutePath) {
+                        call.respondText("""{"error":"cannot delete share root"}""", status = HttpStatusCode.BadRequest)
+                        return@delete
+                    }
                     if (file != null && isAllowed(file) && deleteRecursively(file)) {
                         logRequest(call, 200)
                         call.respondText("""{"deleted":true}""", ContentType.Application.Json)
@@ -610,7 +641,7 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
         if (!isSingleFileSandbox) return true
         return sharedFiles.any { sf ->
             file.absolutePath == sf.absolutePath ||
-            file.absolutePath.startsWith(sf.absolutePath)
+            file.absolutePath.startsWith(sf.absolutePath + "/")
         }
     }
 
@@ -624,41 +655,53 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
 
     // 手动 HTTP Basic Auth 验证 —— 参考网页文件挂载器的实现
     private fun checkAuth(call: ApplicationCall): Boolean {
+        if (checkAuthSilent(call)) return true
+        // 未通过 → 发送 Basic 认证挑战（浏览器/资源管理器会弹出账号框）
+        call.response.headers.append("WWW-Authenticate", "Basic realm=\"ShareKu\"")
+        return false
+    }
+
+    /** 静默版（无响应副作用）——供 WebSocket 会话与 WebDAV 复用 */
+    private fun checkAuthSilent(call: ApplicationCall): Boolean {
         if (!enableAuth) return true
-        val authHeader = call.request.header("authorization") ?: run {
-            call.response.headers.append("WWW-Authenticate", "Basic realm=\"ShareKu\"")
-            return false
-        }
-        if (!authHeader.startsWith("Basic ", ignoreCase = true)) {
-            call.response.headers.append("WWW-Authenticate", "Basic realm=\"ShareKu\"")
-            return false
-        }
-        try {
-            val encoded = authHeader.removePrefix("Basic ").trim()
+        val authHeader = call.request.header("authorization") ?: return false
+        if (!authHeader.startsWith("Basic ", ignoreCase = true)) return false
+        return try {
+            // 用 substring 而非 removePrefix：兼容小写 "basic " 前缀
+            val encoded = authHeader.substring(6).trim()
             val decoded = String(Base64.getDecoder().decode(encoded))
             val colonIdx = decoded.indexOf(':')
             if (colonIdx < 0) return false
             val user = decoded.substring(0, colonIdx)
             val pass = decoded.substring(colonIdx + 1)
-            return user == authUsername && pass == authPassword
+            user == authUsername && pass == authPassword
         } catch (e: Exception) {
-            return false
+            false
         }
     }
 
     // 【连接确认】一次性验证码 + 会话令牌检查 —— 不信任 IP 白名单
     // 返回 true=放行, false=已拦截(已返回等待页或403)
     private suspend fun checkIp(call: ApplicationCall): Boolean {
+        if (checkIpGate(call)) return true
+        val ip = call.request.local.remoteHost
+        // 已拉黑 → 403；未授权新设备 → 等待授权页（输入一次性验证码）
+        if (ip in blockedIps) {
+            call.respondText(buildForbiddenHtml(), ContentType.Text.Html, HttpStatusCode.Forbidden)
+        } else {
+            call.respondText(buildWaitingHtml(ip), ContentType.Text.Html)
+        }
+        return false
+    }
+
+    /** 静默门禁（无响应副作用）——WebSocket 会话使用；新 IP 同样会触发一次性验证码通知 */
+    private fun checkIpGate(call: ApplicationCall): Boolean {
         if (!requireConfirm) return true
         val ip = call.request.local.remoteHost
         val now = System.currentTimeMillis()
         // 本机回环地址永远放行
         if (ip == "127.0.0.1" || ip == "0:0:0:0:0:0:0:1" || ip == "localhost") return true
-        // 已拉黑 → 403
-        if (ip in blockedIps) {
-            call.respondText(buildForbiddenHtml(), ContentType.Text.Html, HttpStatusCode.Forbidden)
-            return false
-        }
+        if (ip in blockedIps) return false
         // 有效会话令牌 → 放行（令牌绑定 IP，改 IP 无效）
         if (hasValidToken(call, ip, now)) return true
         // 新 IP → 生成一次性验证码并发通知（若已有未过期码则复用，避免重复弹通知）
@@ -666,17 +709,20 @@ onPeerReceiveProgress?.invoke(origName, written, totalHint)
         if (entry == null || entry.second < now) {
             val code = generateCode()
             pendingCodes[ip] = code to (now + CODE_TTL_MS)
-            // 异步回调，不阻塞当前请求（通知栏展示 IP + 一次性码）
             onNewConnection?.invoke(ip, code)
         }
-        // 返回等待授权页面（输入一次性验证码）
-        call.respondText(buildWaitingHtml(ip), ContentType.Text.Html)
         return false
     }
 
     /** 校验会话令牌：cookie 中的 shareku_token，或 Basic Auth 密码位（供 WebDAV/资源管理器使用） */
     private fun hasValidToken(call: ApplicationCall, ip: String, now: Long): Boolean {
         val token = requestCookie(call, "shareku_token") ?: basicAuthPassword(call) ?: return false
+        return isValidToken(token, ip, now)
+    }
+
+    /** 令牌是否有效且绑定该 IP（网页 cookie 与 WebDAV 密码位共用） */
+    private fun isValidToken(token: String?, ip: String, now: Long): Boolean {
+        if (token.isNullOrEmpty()) return false
         val entry = sessionTokens[token] ?: return false
         return entry.first == ip && entry.second > now
     }
@@ -861,6 +907,12 @@ p{font-size:14px;color:#636e72;line-height:1.5}
         )
     }
 
+    /** 文件名清洗：URL 解码失败时保留原文；替换文件系统非法字符（保留中文等 Unicode） */
+    private fun sanitizeFileName(raw: String): String {
+        val decoded = try { URLDecoder.decode(raw, "UTF-8") } catch (_: Exception) { raw }
+        return decoded.replace(Regex("[/\\\\:*?\"<>|\\u0000-\\u001F]"), "_").ifBlank { "upload_${System.currentTimeMillis()}" }
+    }
+
     private fun jsonEscape(s: String): String {
         return s.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -892,9 +944,28 @@ p{font-size:14px;color:#636e72;line-height:1.5}
         return sb.toString()
     }
 
+    /**
+     * WebDAV 专用门禁：Windows 资源管理器等客户端无法输入一次性验证码，因此只要求单个凭据通道：
+     * - 开启 Basic Auth → 用户名/密码正确即放行；
+     * - 仅开启连接确认 → 密码位填 24h 会话令牌（网页验证后显示）即放行；
+     * - 两者都开 → 任一通道通过即可（修复此前两种认证互相死锁的问题）。
+     */
+    private fun checkWebDavAccess(call: ApplicationCall): Boolean {
+        if (enableAuth && checkAuthSilent(call)) return true
+        if (requireConfirm) {
+            val token = basicAuthPassword(call)
+            if (isValidToken(token, call.request.local.remoteHost, System.currentTimeMillis())) return true
+        }
+        if (!enableAuth && !requireConfirm) return true
+        return false
+    }
+
     private suspend fun handleWebDav(call: ApplicationCall) {
-        if (!checkIp(call)) return
-        if (!checkAuth(call)) { call.respondText("Unauthorized", status = HttpStatusCode.Unauthorized); return }
+        if (!checkWebDavAccess(call)) {
+            call.response.headers.append("WWW-Authenticate", "Basic realm=\"ShareKu\"")
+            call.respondText("Unauthorized", status = HttpStatusCode.Unauthorized)
+            return
+        }
         val method = call.request.httpMethod.value
         when {
             method == "OPTIONS" -> {

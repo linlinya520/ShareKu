@@ -48,21 +48,27 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(onBack: () -> Unit, onChangelog: () -> Unit = {}) {
+fun AboutScreen(onBack: () -> Unit, onChangelog: () -> Unit = {}, embedded: Boolean = false) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
+    // 动态读取版本号（避免硬编码过期）
+    val versionName = remember {
+        try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?" } catch (_: Exception) { "?" }
+    }
 
     Scaffold(
         topBar = {
-            AppTopBar(
-                title = { Text("关于", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+            if (!embedded) {
+                AppTopBar(
+                    title = { Text("关于", fontWeight = FontWeight.SemiBold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { paddingValues ->
         LazyColumn(
@@ -104,12 +110,14 @@ AboutChip(R.drawable.ic_github_chip, "GitHub", "开源仓库",
                             MaterialTheme.colorScheme.onTertiaryContainer) {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/linlinya520/ShareKu")))
                         }
-                    AboutChip(R.drawable.ic_version_chip, "v1.3.0", "当前版本",
+                    AboutChip(R.drawable.ic_version_chip, "v$versionName", "当前版本",
                         MaterialTheme.colorScheme.secondaryContainer,
                         MaterialTheme.colorScheme.onSecondaryContainer) { onChangelog() }
                     AboutChip(R.drawable.ic_license_chip, "GPL-3.0", "开源协议",
                         MaterialTheme.colorScheme.errorContainer,
-                        MaterialTheme.colorScheme.onErrorContainer) {}
+                        MaterialTheme.colorScheme.onErrorContainer) {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/linlinya520/ShareKu/blob/main/LICENSE")))
+                    }
                 }
             }
 

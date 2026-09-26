@@ -10,6 +10,8 @@ var ICONS={
  apk:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C13.85 1.23 12.95 1 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg>',
  del:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'
 };
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function loadFromCrumb(el){load(el.dataset.path)}
 function getIcon(f){
  if(f.isDirectory)return[ICONS.folder,'dir'];
  var n=f.name.toLowerCase();
@@ -59,7 +61,7 @@ async function load(path, pushHistory){
   currentPath=path;
  var parts=path?path.split('/').filter(Boolean):[];
  var h='<a onclick="load(\'\')">根目录</a>',cur='';
- for(var i=0;i<parts.length;i++){cur+=(cur?'/':'')+parts[i];h+=' <span>/</span> <a onclick="load(\''+cur.replace(/'/g,"\\'")+'\')">'+parts[i]+'</a>';}
+ for(var i=0;i<parts.length;i++){cur+=(cur?'/':'')+parts[i];h+=' <span>/</span> <a onclick="loadFromCrumb(this)" data-path="'+esc(cur)+'">'+esc(parts[i])+'</a>';}
  c.innerHTML=h;clearSelection();
  try{var r=await fetch('/api/list?path='+encodeURIComponent(path)),f=await r.json();
   if(!Array.isArray(f)){g.innerHTML='';e.style.display='flex';return}
@@ -74,9 +76,9 @@ function renderFiles(files){
  for(var i=0;i<files.length;i++){
   var f=files[i],ic=getIcon(f),cls=ic[1],svg=ic[0];
   var sel=S.some(function(s){return s.path===f.path});
-  h+='<div class="card '+cls+(sel?' selected':'')+'" data-path="'+f.path.replace(/"/g,'"')+'" data-dir="'+f.isDirectory+'" data-name="'+f.name.replace(/"/g,'"')+'" onclick="onCard(this,event)">';
+  h+='<div class="card '+cls+(sel?' selected':'')+'" data-path="'+esc(f.path)+'" data-dir="'+f.isDirectory+'" data-name="'+esc(f.name)+'" onclick="onCard(this,event)">';
   h+='<div class="svgwrap">'+svg+'</div>';
-  h+='<div class="name">'+f.name.replace(/</g,'&lt;')+'</div>';
+  h+='<div class="name">'+esc(f.name)+'</div>';
   h+='<div class="meta">'+(f.isDirectory?'文件夹':fmtSize(f.size))+'</div>';
   h+='<div class="check"></div></div>';
  }

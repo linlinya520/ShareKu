@@ -1,5 +1,6 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.AppTopBar
 import com.linjing.shareku.ui.component.AppSwitch
 import android.os.Bundle
@@ -41,43 +42,37 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SecurityScreen(onBack: () -> Unit) {
+fun SecurityScreen(onBack: () -> Unit, embedded: Boolean = false) {
     val scope = rememberCoroutineScope()
     val prefs = AppSingletons.preferencesManager
     val haptic = LocalHapticFeedback.current
     val enableAuth by prefs.enableAuth.collectAsState(initial = false)
-    val authUsername by prefs.authUsername.collectAsState(initial = "admin")
-    val authPassword by prefs.authPassword.collectAsState(initial = "admin")
+    val authUsername by prefs.authUsername.collectAsState(initial = "shareku")
+    val authPassword by prefs.authPassword.collectAsState(initial = "share123")
     val requireConfirm by prefs.requireConnectionConfirm.collectAsState(initial = false)
     var passwordVisible by remember { mutableStateOf(false) }
-    // 输入框使用本地 state，避免 DataStore 异步回写导致光标跳动
-    var usernameInput by remember { mutableStateOf("") }
-    var passwordInput by remember { mutableStateOf("") }
-    var fieldsInitialized by remember { mutableStateOf(false) }
+    // 输入框使用本地 state，避免 DataStore 异步回写导致光标跳动；
+    // userEditing：用户开始编辑后不再被 DataStore 值覆盖（修复此前初始值显示错误的问题）
+    var usernameInput by remember { mutableStateOf(authUsername) }
+    var passwordInput by remember { mutableStateOf(authPassword) }
+    var userEditing by remember { mutableStateOf(false) }
     LaunchedEffect(authUsername, authPassword) {
-        if (!fieldsInitialized) {
+        if (!userEditing) {
             usernameInput = authUsername
             passwordInput = authPassword
-            fieldsInitialized = true
         }
     }
+if (!embedded) BackHandler { onBack() }
 
-    BackHandler { onBack() }
-
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = { Text("安全", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
-                    }
-                }
-            )
-        }
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
+    val body: @Composable (Modifier) -> Unit = { m ->
+        Column(m.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {
+
+            if (embedded) {
+                Text("安全", style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 12.dp))
+            }
+
 
             if (LocalUiStyle.current == "miuix") {
                 // ── MIUI 风格：三组合并为一个分组卡片 ──
@@ -113,9 +108,15 @@ fun SecurityScreen(onBack: () -> Unit) {
                 }
                 if (enableAuth) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        OutlinedTextField(usernameInput, { usernameInput = it; scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("用户名") }, shape = RoundedCornerShape(12.dp))
+                        if (authUsername == "shareku" && authPassword == "share123") {
+                            Text("正在使用默认用户名/密码（shareku / share123），建议修改后再使用",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 4.dp))
+                        }
+                        AdaptiveTextField(usernameInput, { usernameInput = it; userEditing = true; scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = "用户名", shape = RoundedCornerShape(12.dp))
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(passwordInput, { passwordInput = it; scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("密码") }, shape = RoundedCornerShape(12.dp),
+                        AdaptiveTextField(passwordInput, { passwordInput = it; userEditing = true; scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = "密码", shape = RoundedCornerShape(12.dp),
                             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, if (passwordVisible) "隐藏" else "显示") } }
@@ -139,9 +140,15 @@ fun SecurityScreen(onBack: () -> Unit) {
                         )
                         AnimatedVisibility(visible = enableAuth, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                                OutlinedTextField(usernameInput, { usernameInput = it; scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("用户名") }, shape = RoundedCornerShape(12.dp))
+                                if (authUsername == "shareku" && authPassword == "share123") {
+                                    Text("正在使用默认用户名/密码（shareku / share123），建议修改后再使用",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(bottom = 4.dp))
+                                }
+                                AdaptiveTextField(usernameInput, { usernameInput = it; userEditing = true; scope.launch { prefs.setAuthUsername(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = "用户名", shape = RoundedCornerShape(12.dp))
                                 Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(passwordInput, { passwordInput = it; scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("密码") }, shape = RoundedCornerShape(12.dp),
+                                AdaptiveTextField(passwordInput, { passwordInput = it; userEditing = true; scope.launch { prefs.setAuthPassword(it) } }, Modifier.fillMaxWidth(), singleLine = true, label = "密码", shape = RoundedCornerShape(12.dp),
                                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                     trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, if (passwordVisible) "隐藏" else "显示") } }
@@ -183,6 +190,23 @@ fun SecurityScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+
+    if (embedded) {
+        body(Modifier.fillMaxWidth())
+    } else {
+        Scaffold(
+            topBar = {
+                AppTopBar(
+                    title = { Text("安全", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+                        }
+                    }
+                )
+            }
+        ) { pad -> body(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())) }
     }
 }
 

@@ -17,12 +17,20 @@ object AppSingletons {
     lateinit var logManager: LogManager
         private set
 
-    // Global server running state - reactive StateFlow for UI binding
+    // 服务器运行状态 - reactive StateFlow for UI binding
     private val _isServerRunning = MutableStateFlow(false)
     val isServerRunning: StateFlow<Boolean> = _isServerRunning.asStateFlow()
 
     fun setServerRunning(running: Boolean) {
         _isServerRunning.value = running
+    }
+
+    // 服务器实际监听端口（端口被占用 fallback 后与设置值不同，UI/通知据此显示真实地址）
+    private val _serverActualPort = MutableStateFlow<Int?>(null)
+    val serverActualPort: StateFlow<Int?> = _serverActualPort.asStateFlow()
+
+    fun setServerActualPort(port: Int?) {
+        _serverActualPort.value = port
     }
 
     // IP 连接跟踪 —— 用于连接确认和黑名单
@@ -39,6 +47,7 @@ object AppSingletons {
     val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
 
     /** 入队一个待审批 IP（附带一次性验证码），UI 自动弹出审批卡片 */
+    @Synchronized
     fun enqueuePendingIp(ip: String, code: String) {
         pendingIpQueue.add(ip to code)
         _pendingCount.value = pendingIpQueue.size
@@ -49,6 +58,7 @@ object AppSingletons {
     }
 
     /** 当前 IP 处理完毕，出队下一个 */
+    @Synchronized
     fun dequeuePendingIp() {
         if (pendingIpQueue.isNotEmpty()) {
             pendingIpQueue.removeFirst()
@@ -60,6 +70,7 @@ object AppSingletons {
     }
 
     /** 清空审批队列（服务停止时） */
+    @Synchronized
     fun clearPendingQueue() {
         pendingIpQueue.clear()
         _pendingCount.value = 0
@@ -67,8 +78,8 @@ object AppSingletons {
         _pendingConfirmCode.value = null
     }
 
-    /** 当前活跃的共享文件（缓存清理跳过） */
-    val activeSharedFiles = mutableSetOf<String>()
+    /** 当前活跃的共享文件（缓存清理跳过）——并发集合，跨线程增删安全 */
+    val activeSharedFiles: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     fun init(context: Context) {
         preferencesManager = PreferencesManager(context)

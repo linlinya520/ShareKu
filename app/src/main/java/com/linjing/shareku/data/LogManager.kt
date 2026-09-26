@@ -16,10 +16,8 @@ data class LogEntry(
     val userAgent: String = "",
     val bytesTransferred: Long = 0
 ) {
-    val formattedTime: String get() {
-        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-        return sdf.format(Date(timestamp))
-    }
+    // 构造时格式化一次（避免列表滚动时每帧重建 SimpleDateFormat）
+    val formattedTime: String = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
 }
 
 class LogManager {

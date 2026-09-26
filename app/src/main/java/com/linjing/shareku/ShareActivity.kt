@@ -47,6 +47,7 @@ import com.linjing.shareku.peer.PeerTransferClient
 import com.linjing.shareku.peer.TransferProgress
 import com.linjing.shareku.server.NetworkUtils
 import com.linjing.shareku.service.ServerForegroundService
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.component.QrCodeCard
 import com.linjing.shareku.ui.theme.LocalShareTheme
@@ -85,16 +86,17 @@ class ShareActivity : ComponentActivity() {
         // 分享界面使用独立的端口（默认 8085，与主页端口完全独立，互不影响）
         val port = runBlocking { AppSingletons.preferencesManager.sharePort.first() }
         val url = "http://$ip:$port"
-        // 同步读取当前主题
+        // 一次性同步读取首帧需要的设置（避免首帧默认值闪变 & 重组时重复阻塞主线程）
         val initialTheme = runBlocking { AppSingletons.preferencesManager.themeMode.first() }
+        val initialPaletteOrdinal = runBlocking { AppSingletons.preferencesManager.paletteStyleOrdinal.first() }
+        val initialUiStyle = runBlocking { AppSingletons.preferencesManager.uiStyle.first() }
         setContent {
             val themeModeName by AppSingletons.preferencesManager.themeMode.collectAsState(initial = initialTheme)
-            val paletteOrdinal by AppSingletons.preferencesManager.paletteStyleOrdinal.collectAsState(initial = 0)
+            val paletteOrdinal by AppSingletons.preferencesManager.paletteStyleOrdinal.collectAsState(initial = initialPaletteOrdinal)
             val paletteStyle = com.linjing.shareku.ui.theme.color.PaletteStyle.entries
-        .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
-    val initialUiStyle = runBlocking { AppSingletons.preferencesManager.uiStyle.first() }
-    val uiStyle by AppSingletons.preferencesManager.uiStyle.collectAsState(initial = initialUiStyle)
-    LocalShareTheme(themeMode = ThemeMode.fromName(themeModeName), paletteStyle = paletteStyle, uiStyle = uiStyle) {
+                .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
+            val uiStyle by AppSingletons.preferencesManager.uiStyle.collectAsState(initial = initialUiStyle)
+            LocalShareTheme(themeMode = ThemeMode.fromName(themeModeName), paletteStyle = paletteStyle, uiStyle = uiStyle) {
                 ShareSheetDialog(
                     files = cacheFiles,
                     url = url,
@@ -222,7 +224,9 @@ class ShareActivity : ComponentActivity() {
                         isSingleFileSandbox = singleFileSandbox,
                         allowUpload = false,
                         allowDelete = false,
-                        enableWebDav = true
+                        enableWebDav = true,
+                        // 分享服务器仅对外提供下载，不接受直连推流
+                        allowPeerReceive = false
                     )
                     val engine = srv.start(ip, port)
                     engine.start(wait = false)
@@ -344,7 +348,24 @@ fun ShareSheetDialog(
         peerSendError = null
         scope.launch {
             val client = PeerTransferClient()
+            // 发送期间持唤醒锁 + WiFi 锁，锁屏后传输不中断（与「设备直连」页一致）
+            var wl: android.os.PowerManager.WakeLock? = null
+            var wifiL: android.net.wifi.WifiManager.WifiLock? = null
             try {
+                try {
+                    val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+                    wl = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ShareKu:Send").apply {
+                        setReferenceCounted(false)
+                        acquire()
+                    }
+                } catch (_: Exception) {}
+                try {
+                    val wm = context.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                    wifiL = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ShareKu:Send").apply {
+                        setReferenceCounted(false)
+                        acquire()
+                    }
+                } catch (_: Exception) {}
                 client.sendFiles(files, peer.host, peer.port).collect { p ->
                     peerSendProgress = p
                     if (p.done) {
@@ -356,6 +377,8 @@ fun ShareSheetDialog(
                 peerSendError = e.message ?: "发送失败"
             } finally {
                 client.close()
+                try { wl?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+                try { wifiL?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
             }
         }
     }
@@ -647,7 +670,7 @@ fun ShareSheetDialog(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(4.dp))
-                                        Text("已发送到对方设备（对方确认后保存）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                        Text("已发送到对方设备（对方已自动保存）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                                 peerSendError?.let {
@@ -749,8 +772,13 @@ fun ShareSheetDialog(
                             Spacer(Modifier.padding(start = 8.dp))
                             top.yukonga.miuix.kmp.basic.Button(
                                 onClick = {
-                                    portInput.toIntOrNull()?.let { p -> currentPort = p }
-                                    showPortDialog = false
+                                    val p = portInput.toIntOrNull()
+                                    if (p == null || p !in 1024..65535) {
+                                        android.widget.Toast.makeText(context, "端口需在 1024-65535 之间", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        currentPort = p
+                                        showPortDialog = false
+                                    }
                                 }
                             ) { Text("确认") }
                         }
@@ -762,21 +790,24 @@ fun ShareSheetDialog(
                 onDismissRequest = { showPortDialog = false },
                 title = { Text("修改端口") },
                 text = {
-                    OutlinedTextField(
+                    AdaptiveTextField(
                         value = portInput, singleLine = true,
                         onValueChange = { portInput = it },
-                        label = { Text("端口号") },
-                        placeholder = { Text("8080") },
+                        label = "端口号",
+                        placeholder = "8080",
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 },
                 confirmButton = {
                     Button(onClick = {
-                        portInput.toIntOrNull()?.let { p ->
+                        val p = portInput.toIntOrNull()
+                        if (p == null || p !in 1024..65535) {
+                            android.widget.Toast.makeText(context, "端口需在 1024-65535 之间", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
                             currentPort = p
+                            showPortDialog = false
                         }
-                        showPortDialog = false
                     }) { Text("确认") }
                 },
                 dismissButton = { TextButton(onClick = { showPortDialog = false }) { Text("取消") } }

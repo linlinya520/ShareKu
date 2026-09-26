@@ -6,20 +6,27 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.linjing.shareku.ui.component.LiquidPreRenderOverlay
 import com.linjing.shareku.ui.navigation.LocalShareNavHost
+import com.linjing.shareku.ui.screen.DockLayout
 import com.linjing.shareku.ui.theme.LocalShareTheme
 import com.linjing.shareku.ui.theme.ThemeMode
 import com.linjing.shareku.widget.ShareKuWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
@@ -34,22 +41,59 @@ class MainActivity : ComponentActivity() {
         ShareKuWidgetProvider.refresh(this)
         setContent {
             val prefs = AppSingletons.preferencesManager
-            val themeModeName by prefs.themeMode.collectAsState(initial = "SYSTEM")
-            val dynamicColor by prefs.dynamicColor.collectAsState(initial = true)
-            val paletteOrdinal by prefs.paletteStyleOrdinal.collectAsState(initial = 0)
+            // 首帧必须用用户持久化的设置：同步读取一次并缓存（remember），
+            // 否则 collectAsState 默认值会先渲染出一帧「系统主题/默认样式」→ 主题/布局闪变。
+            val initial = remember {
+                runBlocking {
+                    InitialUiState(
+                        themeModeName = prefs.themeMode.first(),
+                        dynamicColor = prefs.dynamicColor.first(),
+                        paletteOrdinal = prefs.paletteStyleOrdinal.first(),
+                        uiStyle = prefs.uiStyle.first(),
+                        layoutMode = prefs.layoutMode.first()
+                    )
+                }
+            }
+            val themeModeName by prefs.themeMode.collectAsState(initial = initial.themeModeName)
+            val dynamicColor by prefs.dynamicColor.collectAsState(initial = initial.dynamicColor)
+            val paletteOrdinal by prefs.paletteStyleOrdinal.collectAsState(initial = initial.paletteOrdinal)
             val paletteStyle = com.linjing.shareku.ui.theme.color.PaletteStyle.entries
-        .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
-    val initialUiStyle = runBlocking { prefs.uiStyle.first() }
-    val uiStyle by prefs.uiStyle.collectAsState(initial = initialUiStyle)
-    LocalShareTheme(
-        themeMode = ThemeMode.fromName(themeModeName),
-        dynamicColor = dynamicColor,
-        paletteStyle = paletteStyle,
-        uiStyle = uiStyle
-    ) {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    val navController = rememberNavController()
-                    LocalShareNavHost(navController = navController, modifier = Modifier.fillMaxSize())
+                .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
+            val uiStyle by prefs.uiStyle.collectAsState(initial = initial.uiStyle)
+            val layoutMode by prefs.layoutMode.collectAsState(initial = initial.layoutMode)
+            LocalShareTheme(
+                themeMode = ThemeMode.fromName(themeModeName),
+                dynamicColor = dynamicColor,
+                paletteStyle = paletteStyle,
+                uiStyle = uiStyle
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = androidx.compose.ui.graphics.Color.Transparent
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        val navController = rememberNavController()
+                        val isClassic = layoutMode != "dock"
+                        // 首次启用液态玻璃（经典布局）：一次性预渲染引导，底部正式界面照常渲染完成首绘
+                        var classicPreRendering by remember { mutableStateOf(false) }
+                        LaunchedEffect(uiStyle, layoutMode) {
+                            if (uiStyle == "liquid" && isClassic && !prefs.liquidPreRenderDone.first()) {
+                                classicPreRendering = true
+                                delay(2600)
+                                prefs.setLiquidPreRenderDone(true)
+                                classicPreRendering = false
+                            }
+                        }
+                        if (isClassic) {
+                            LocalShareNavHost(navController = navController, modifier = Modifier.fillMaxSize())
+                        } else {
+                            // 第二套布局：底部悬浮 Dock（主页 / 工具 / 外观 / 关于）
+                            com.linjing.shareku.ui.screen.DockLayout()
+                        }
+                        if (classicPreRendering) {
+                            LiquidPreRenderOverlay()
+                        }
+                    }
                 }
             }
         }
@@ -126,3 +170,12 @@ object CacheUtils {
         else -> "${"%.1f".format(bytes.toDouble() / (1024 * 1024))} MB"
     }
 }
+
+/** MainActivity 首帧需要的用户设置（同步读取一次，避免主题/布局闪变） */
+private data class InitialUiState(
+    val themeModeName: String,
+    val dynamicColor: Boolean,
+    val paletteOrdinal: Int,
+    val uiStyle: String,
+    val layoutMode: String
+)

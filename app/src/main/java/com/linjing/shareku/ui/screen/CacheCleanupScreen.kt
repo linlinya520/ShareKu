@@ -1,5 +1,6 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.AppTopBar
 import com.linjing.shareku.ui.component.AppSwitch
 import androidx.compose.animation.AnimatedVisibility
@@ -36,19 +37,21 @@ import com.linjing.shareku.ui.component.AppSwitchRow
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CacheCleanupScreen(onBack: () -> Unit) {
+fun CacheCleanupScreen(onBack: () -> Unit, embedded: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val prefs = AppSingletons.preferencesManager
 
-    val initialInterval = runBlocking { prefs.autoCleanIntervalMinutes.first() }
-    val autoCleanInterval by prefs.autoCleanIntervalMinutes.collectAsState(initial = initialInterval)
+    // 不要用 runBlocking 同步读 DataStore：它在主线程阻塞，每次进入本页都会卡一下
+    val autoCleanInterval by prefs.autoCleanIntervalMinutes.collectAsState(initial = 0)
     var intervalInput by remember { mutableStateOf(autoCleanInterval.toString()) }
     var showCustomDialog by remember { mutableStateOf(false) }
 
@@ -59,24 +62,11 @@ fun CacheCleanupScreen(onBack: () -> Unit) {
         cacheSizeBytes = CacheUtils.getCacheSize(context)
     }
 
-    androidx.activity.compose.BackHandler { onBack() }
+    if (!embedded) androidx.activity.compose.BackHandler { onBack() }
 
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = { Text("缓存清理", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onBack()
-                    }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
-                }
-            )
-        }
-    ) { pad ->
+    val body: @Composable (Modifier) -> Unit = { m ->
         Column(
-            Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
+            m.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Spacer(Modifier.height(8.dp))
@@ -102,8 +92,9 @@ fun CacheCleanupScreen(onBack: () -> Unit) {
                     FilledTonalButton(onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         scope.launch {
-                            val freed = CacheUtils.cleanCacheDir(context)
-                            cacheSizeBytes = CacheUtils.getCacheSize(context)
+                            // 文件遍历/删除放 IO 线程避免卡主线程；Toast 仍在主线程弹出
+                            val freed = withContext(Dispatchers.IO) { CacheUtils.cleanCacheDir(context) }
+                            cacheSizeBytes = withContext(Dispatchers.IO) { CacheUtils.getCacheSize(context) }
                             android.widget.Toast.makeText(
                                 context,
                                 if (freed > 0) "已清理 ${CacheUtils.formatSize(freed)}" else "没有可清理的缓存",
@@ -172,6 +163,24 @@ fun CacheCleanupScreen(onBack: () -> Unit) {
         }
     }
 
+    if (embedded) {
+        body(Modifier.fillMaxWidth())
+    } else {
+        Scaffold(
+            topBar = {
+                AppTopBar(
+                    title = { Text("缓存清理", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onBack()
+                        }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    }
+                )
+            }
+        ) { pad -> body(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())) }
+    }
+
     // 自定义间隔弹窗
     if (showCustomDialog) {
         AlertDialog(
@@ -181,11 +190,11 @@ fun CacheCleanupScreen(onBack: () -> Unit) {
                 Column {
                     Text("输入间隔时间（分钟），最小 5 分钟。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
+                    AdaptiveTextField(
                         value = intervalInput, singleLine = true,
                         onValueChange = { intervalInput = it },
-                        label = { Text("分钟") },
-                        placeholder = { Text("60") },
+                        label = "分钟",
+                        placeholder = "60",
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )

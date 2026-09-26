@@ -1,5 +1,6 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.AppSwitch
 import com.linjing.shareku.ui.component.AppTopBar
 import android.Manifest
@@ -47,6 +48,7 @@ import com.linjing.shareku.SettingsActivity
 import com.linjing.shareku.ui.screen.DirectShareActivity
 import com.linjing.shareku.server.NetworkUtils
 import com.linjing.shareku.service.ServerForegroundService
+import com.linjing.shareku.ui.component.AdaptiveButton
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.component.FileBrowserDialog
 import com.linjing.shareku.ui.component.QrCodeCard
@@ -76,8 +78,11 @@ fun HomeScreen(
 
     // Collect prefs
     val port by prefs.port.collectAsState(initial = 8080)
+    // 服务器实际端口（被占用自动 fallback 后与设置值不同，显示真实地址）
+    val actualPort by AppSingletons.serverActualPort.collectAsState()
+    val displayPort = actualPort ?: port
     val enableAuth by prefs.enableAuth.collectAsState(initial = false)
-    val authUsername by prefs.authUsername.collectAsState(initial = "localshare")
+    val authUsername by prefs.authUsername.collectAsState(initial = "shareku")
     val authPassword by prefs.authPassword.collectAsState(initial = "share123")
     val enableWebDav by prefs.enableWebDav.collectAsState(initial = true)
     val allowUpload by prefs.allowUpload.collectAsState(initial = false)
@@ -165,7 +170,7 @@ fun HomeScreen(
         ?: interfaces.firstOrNull()
 
     val ip = currentInterface?.ipAddress ?: "未连接"
-    val url = "http://$ip:$port"
+    val url = "http://$ip:$displayPort"
 
     Scaffold(
         topBar = {
@@ -337,7 +342,12 @@ fun HomeScreen(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text("端口", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                        Text("$port", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace)
+                        Text("$displayPort", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace)
+                        if (actualPort != null && actualPort != port) {
+                            Text("原端口 $port 被占用，已自动切换",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
                     }
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -372,10 +382,13 @@ fun HomeScreen(
                                     Spacer(Modifier.padding(start = 8.dp))
                                     top.yukonga.miuix.kmp.basic.Button(
                                         onClick = {
-                                            portInput.toIntOrNull()?.let { p ->
+                                            val p = portInput.toIntOrNull()
+                                            if (p == null || p !in 1024..65535) {
+                                                android.widget.Toast.makeText(context, "端口需在 1024-65535 之间", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
                                                 scope.launch { prefs.setPort(p) }
+                                                showPortDialog = false
                                             }
-                                            showPortDialog = false
                                         },
                                         colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColorsPrimary()
                                     ) { Text("确认") }
@@ -388,21 +401,24 @@ fun HomeScreen(
                         onDismissRequest = { showPortDialog = false },
                         title = { Text("修改端口") },
                         text = {
-                            OutlinedTextField(
+                            AdaptiveTextField(
                                 value = portInput, singleLine = true,
                                 onValueChange = { portInput = it },
-                                label = { Text("端口号") },
-                                placeholder = { Text("8080") },
+                                label = "端口号",
+                                placeholder = "8080",
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         },
                         confirmButton = {
                             Button(onClick = {
-                                portInput.toIntOrNull()?.let { p ->
+                                val p = portInput.toIntOrNull()
+                                if (p == null || p !in 1024..65535) {
+                                    android.widget.Toast.makeText(context, "端口需在 1024-65535 之间", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
                                     scope.launch { prefs.setPort(p) }
+                                    showPortDialog = false
                                 }
-                                showPortDialog = false
                             }) { Text("确认") }
                         },
                         dismissButton = { TextButton(onClick = { showPortDialog = false }) { Text("取消") } }
@@ -489,13 +505,13 @@ fun HomeScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
+                                AdaptiveTextField(
                                     value = dirInput,
                                     onValueChange = { dirInput = it },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
-                                    label = { Text("目录路径") },
-                                    placeholder = { Text("/sdcard") }
+                                    label = "目录路径",
+                                    placeholder = "/sdcard"
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 // Quick directory buttons
@@ -612,33 +628,16 @@ AnimatedContent(
                                             showCopied = true
                                             scope.launch { delay(2000); showCopied = false }
                                         }) { Text(if (showCopied) "已复制！" else "复制链接") }
-                                        top.yukonga.miuix.kmp.basic.Button(onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            generateWindowsMapScript(
-                                                url = url,
-                                                authEnabled = enableAuth,
-                                                authUser = authUsername,
-                                                authPass = authPassword,
-                                                clipboardManager = clipboardManager
-                                            )
-                                        }) { Text("映射 Z: 盘") }
                                     } else {
-                                        FilledTonalButton(onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            clipboardManager.setText(AnnotatedString(url))
-                                            showCopied = true
-                                            scope.launch { delay(2000); showCopied = false }
-                                        }) { Text(if (showCopied) "已复制！" else "复制链接") }
-                                        Button(onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            generateWindowsMapScript(
-                                                url = url,
-                                                authEnabled = enableAuth,
-                                                authUser = authUsername,
-                                                authPass = authPassword,
-                                                clipboardManager = clipboardManager
-                                            )
-                                        }) { Text("映射 Z: 盘") }
+                                        AdaptiveButton(
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                                clipboardManager.setText(AnnotatedString(url))
+                                                showCopied = true
+                                                scope.launch { delay(2000); showCopied = false }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
+                                        ) { Text(if (showCopied) "已复制！" else "复制链接") }
                                     }
                                 }
                             }
@@ -747,7 +746,7 @@ AnimatedContent(
                             Text("停止服务器", fontWeight = FontWeight.Bold)
                         }
                     } else {
-                        Button(
+                        AdaptiveButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 val intent = Intent(context, ServerForegroundService::class.java).apply {
@@ -757,10 +756,12 @@ AnimatedContent(
                                 AppSingletons.setServerRunning(false)
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(28.dp)
+                            shape = RoundedCornerShape(28.dp),
+                            tonal = false,
+                            contentPadding = PaddingValues(vertical = 14.dp, horizontal = 24.dp)
                         ) {
                             Icon(Icons.Default.Stop, null)
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(Modifier.width(8.dp))
                             Text("停止服务器", fontWeight = FontWeight.Bold)
                         }
                     }
@@ -807,7 +808,7 @@ AnimatedContent(
                             Text("启动服务器", fontWeight = FontWeight.Bold)
                         }
                     } else {
-                    Button(
+                    AdaptiveButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             // ═══ 定位保活预检 ═══
@@ -822,10 +823,12 @@ AnimatedContent(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp)
+                        shape = RoundedCornerShape(28.dp),
+                        tonal = false,
+                        contentPadding = PaddingValues(vertical = 14.dp, horizontal = 24.dp)
                     ) {
                         Icon(Icons.Default.PlayArrow, null)
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text("启动服务器", fontWeight = FontWeight.Bold)
                     }
                     }
@@ -1133,43 +1136,6 @@ AnimatedContent(
             onDismiss = { showFileBrowser = false }
         )
     }
-}
-
-private fun generateWindowsMapScript(
-    url: String,
-    authEnabled: Boolean,
-    authUser: String,
-    authPass: String,
-    clipboardManager: androidx.compose.ui.platform.ClipboardManager
-) {
-    val uri = java.net.URI(url)
-    val ip = uri.host ?: "127.0.0.1"
-    val port = uri.port
-    val uncPath = "\\\\$ip@$port\\webdav"
-    val authLine = if (authEnabled) "/user:$authUser $authPass" else ""
-        val script = """
-@echo off
-title ShareKu WebDAV Mapping
-echo ============================================
-echo   ShareKu WebDAV Mapping
-echo ============================================
-echo.
-echo Mapping Z: drive...
-net use Z: $uncPath /persistent:no $authLine
-if %errorlevel%==0 (
- echo.
- echo [OK] Z: drive mapped successfully.
- echo Opening in Explorer...
- explorer Z:
-) else (
- echo.
- echo [FAILED] Error code: %errorlevel%
- echo Browser: http://$ip:$port/webdav
- start http://$ip:$port/webdav
-)
-pause
-    """.trimIndent()
-    clipboardManager.setText(AnnotatedString(script))
 }
 
 private fun isStoragePermissionGranted(context: android.content.Context): Boolean {

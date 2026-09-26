@@ -1,6 +1,7 @@
 package com.linjing.shareku.ui.component
 
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -12,6 +13,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 /**
  * 统一顶栏包装（String title 便捷重载）。
@@ -49,12 +53,29 @@ fun AppTopBar(
     colors: TopAppBarColors = TopAppBarDefaults.topAppBarColors(
         containerColor = MaterialTheme.colorScheme.surface,
         titleContentColor = MaterialTheme.colorScheme.onSurface
-    )
+    ),
+    modifier: Modifier = Modifier
 ) {
+    val liquid = isLiquidGlassActive()
     TopAppBar(
         title = title,
         navigationIcon = navigationIcon ?: {},
         actions = actions,
-        colors = colors
+        modifier = if (liquid) {
+            modifier.liquidGlass(
+                shape = RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp),
+                surfaceAlpha = 0.10f,
+                blurRadius = 6.dp,
+                refractionHeight = 18.dp,
+                refractionAmount = 34.dp
+            )
+        } else {
+            modifier
+        },
+        colors = if (liquid) {
+            colors.copy(containerColor = Color.Transparent)
+        } else {
+            colors
+        }
     )
 }

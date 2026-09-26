@@ -1,5 +1,6 @@
 package com.linjing.shareku.ui.screen
 
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.AppTopBar
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -58,13 +59,13 @@ fun LogScreen(
                 .padding(paddingValues)
         ) {
             // Filter input
-            OutlinedTextField(
+            AdaptiveTextField(
                 value = filterIp,
                 onValueChange = { filterIp = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                placeholder = { Text("按 IP 筛选…") },
+                placeholder = "按 IP 筛选…",
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )

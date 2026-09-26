@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.linjing.shareku.AppSingletons
+import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.AppSwitchRow
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.theme.LocalUiStyle
@@ -32,7 +33,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ServerScreen(onBack: () -> Unit) {
+fun ServerScreen(onBack: () -> Unit, embedded: Boolean = false) {
     val scope = rememberCoroutineScope()
     val prefs = AppSingletons.preferencesManager
     val haptic = LocalHapticFeedback.current
@@ -41,15 +42,10 @@ fun ServerScreen(onBack: () -> Unit) {
     LaunchedEffect(port) { if (portInput.toIntOrNull() != port) portInput = port.toString() }
     val enableWebDav by prefs.enableWebDav.collectAsState(initial = true)
 
-    BackHandler { onBack() }
+    if (!embedded) BackHandler { onBack() }
 
-    Scaffold(
-        topBar = {
-            AppTopBar(title = { Text("服务器", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } })
-        }
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
+    val body: @Composable (Modifier) -> Unit = { m ->
+        Column(m.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {
 
             Text("端口", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
@@ -61,11 +57,11 @@ fun ServerScreen(onBack: () -> Unit) {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("端口号", style = MaterialTheme.typography.bodyLarge)
-                            Text("当前端口: $port", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("当前端口: $port（范围 1024-65535）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         top.yukonga.miuix.kmp.basic.TextField(
                             value = portInput,
-                            onValueChange = { v -> portInput = v; v.toIntOrNull()?.let { scope.launch { prefs.setPort(it) } } },
+                            onValueChange = { v -> portInput = v; v.toIntOrNull()?.takeIf { it in 1024..65535 }?.let { scope.launch { prefs.setPort(it) } } },
                             modifier = Modifier.width(96.dp),
                             singleLine = true
                         )
@@ -73,12 +69,12 @@ fun ServerScreen(onBack: () -> Unit) {
                 } else {
                     ListItem(
                         headlineContent = { Text("端口号", style = MaterialTheme.typography.bodyLarge) },
-                        supportingContent = { Text("当前端口: $port", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        supportingContent = { Text("当前端口: $port（范围 1024-65535）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         trailingContent = {
-                            OutlinedTextField(
+                            AdaptiveTextField(
                                 value = portInput, singleLine = true,
-                                onValueChange = { v -> portInput = v; v.toIntOrNull()?.let { scope.launch { prefs.setPort(it) } } },
-                                modifier = Modifier.width(80.dp), shape = RoundedCornerShape(12.dp),
+                                onValueChange = { v -> portInput = v; v.toIntOrNull()?.takeIf { it in 1024..65535 }?.let { scope.launch { prefs.setPort(it) } } },
+                                modifier = Modifier.width(100.dp), shape = RoundedCornerShape(12.dp),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         }
@@ -100,6 +96,17 @@ fun ServerScreen(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (embedded) {
+        body(Modifier.fillMaxWidth())
+    } else {
+        Scaffold(
+            topBar = {
+                AppTopBar(title = { Text("服务器", fontWeight = FontWeight.Bold) },
+                    navigationIcon = { IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.ContextClick); onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } })
+            }
+        ) { pad -> body(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())) }
     }
 }
 

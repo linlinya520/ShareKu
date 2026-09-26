@@ -12,8 +12,8 @@ android {
         applicationId = "com.linjing.shareku"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.3.1"
+        versionCode = 9
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -123,12 +123,20 @@ dependencies {
     // Miuix（MIUI 风格 UI 组件库，设置-外观可切换）
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.3")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.3")
+    // Liquid Glass（苹果液态玻璃效果，本地修复 minCompileSdk 37->36）
+    implementation("io.github.kyant0:backdrop-android:2.0.1")
+    // backdrop 的 lens() 折射效果依赖 shapes（同样本地修复 minCompileSdk 37->36）
+    implementation("io.github.kyant0:shapes-android:1.2.1")
 
     // Ktor Client
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.coil.compose)
+
+    // Media3（本地视频壁纸播放；texture_view 模式保证画面可被液态玻璃背景层采样）
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
 
     // Testing
     testImplementation(libs.junit)
