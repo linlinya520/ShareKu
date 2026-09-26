@@ -6,6 +6,12 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-green.svg)](https://developer.android.com)
 [![Release](https://img.shields.io/badge/Release-v1.4.0-purple.svg)](https://github.com/linlinya520/ShareKu/releases)
 
+## 📸 截图预览
+
+| 主页 | 功能 | 外观 |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/home.jpg" width="230" alt="主页"> | <img src="docs/screenshots/features.jpg" width="230" alt="功能"> | <img src="docs/screenshots/appearance.jpg" width="230" alt="外观"> |
+
 ## 🆕 v1.4.0 更新亮点
 
 - **苹果液态玻璃（Liquid Glass）主题**：基于 [Kyant0/backdrop](https://kyant.gitbook.io/backdrop) 的实时折射 / 模糊 / 边缘色散 / 高光 / 投影，全局壁纸作为折射源，玻璃元素跟随内容实时变化
