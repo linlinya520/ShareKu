@@ -8,14 +8,21 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.linjing.shareku.ui.component.LiquidPreRenderOverlay
@@ -72,6 +79,19 @@ class MainActivity : ComponentActivity() {
                     color = androidx.compose.ui.graphics.Color.Transparent
                 ) {
                     Box(Modifier.fillMaxSize()) {
+                        // ═══ 作者的话（2.0.0 首次运行一次性提示，强制 5 秒后可关闭）═══
+                        var showAuthorNote by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) {
+                            val alreadyShown = prefs.authorNoteShown.first()
+                            if (!alreadyShown) {
+                                showAuthorNote = true
+                                prefs.setAuthorNoteShown(true)
+                            }
+                        }
+                        if (showAuthorNote) {
+                            AuthorNoteDialog(onDismiss = { showAuthorNote = false })
+                        }
+
                         val navController = rememberNavController()
                         val isClassic = layoutMode != "dock"
                         // 首次启用液态玻璃（经典布局）：一次性预渲染引导，底部正式界面照常渲染完成首绘
@@ -179,3 +199,49 @@ private data class InitialUiState(
     val uiStyle: String,
     val layoutMode: String
 )
+
+@Composable
+private fun AuthorNoteDialog(onDismiss: () -> Unit) {
+    var canClose by remember { mutableStateOf(false) }
+    var countdown by remember { mutableIntStateOf(5) }
+    LaunchedEffect(Unit) {
+        delay(5000)
+        canClose = true
+    }
+    LaunchedEffect(Unit) {
+        while (countdown > 0) {
+            delay(1000)
+            countdown -= 1
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { if (canClose) onDismiss() },
+        title = {
+            Text(
+                "作者的话",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = "关于这个软件，方向是越来越迷茫，不知道要做什么功能了，再添加下去就要臃肿了。\n\n" +
+                    "你们有什么想法、想添加的功能，都可以加我 QQ（3470176230）告诉我，或者到 GitHub 提 Issue。\n\n" +
+                    "没有什么想法的话，短时间内应该不会更新了。代码越来越臃肿，各种 bug 都有（有一些新鲜的功能，比如插件生态并没有完善，甚至很多问题），但其实大多数人也用不到这些功能吧？",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = canClose
+            ) {
+                Text(if (canClose) "我知道了" else "请稍候（${countdown}s）")
+            }
+        },
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
+    )
+}

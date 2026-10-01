@@ -71,6 +71,8 @@ class PreferencesManager(private val context: Context) {
     val dockSliderMotion: Flow<Boolean> = context.dataStore.data.map { it[KEY_DOCK_MOTION] ?: true }
     /** 预见式返回预览：手势返回时跟手预览（关 = 直接完成返回，更省电） */
     val predictiveBackPreview: Flow<Boolean> = context.dataStore.data.map { it[KEY_PREDICTIVE_PREVIEW] ?: true }
+    // 2.0.0 首次运行「作者的话」是否已展示（一次性）
+    val authorNoteShown: Flow<Boolean> = context.dataStore.data.map { it[KEY_AUTHOR_NOTE] ?: false }
 
     /** Write-safe receive directory: if configured dir is unwritable, fall back to app files dir. */
     fun getReceiveDirFile(context: Context, configuredPath: String): File {
@@ -126,6 +128,7 @@ class PreferencesManager(private val context: Context) {
     suspend fun setSkeletonBreathing(value: Boolean) { context.dataStore.edit { it[KEY_SKELETON_BREATH] = value } }
     suspend fun setDockSliderMotion(value: Boolean) { context.dataStore.edit { it[KEY_DOCK_MOTION] = value } }
     suspend fun setPredictiveBackPreview(value: Boolean) { context.dataStore.edit { it[KEY_PREDICTIVE_PREVIEW] = value } }
+    suspend fun setAuthorNoteShown(value: Boolean) { context.dataStore.edit { it[KEY_AUTHOR_NOTE] = value } }
     companion object {
         private val KEY_PORT = intPreferencesKey("port")
     private val KEY_SHARE_PORT = intPreferencesKey("share_port")
@@ -170,5 +173,6 @@ class PreferencesManager(private val context: Context) {
         private val KEY_SKELETON_BREATH = booleanPreferencesKey("skeleton_breathing")
         private val KEY_DOCK_MOTION = booleanPreferencesKey("dock_slider_motion")
         private val KEY_PREDICTIVE_PREVIEW = booleanPreferencesKey("predictive_back_preview")
+        private val KEY_AUTHOR_NOTE = booleanPreferencesKey("author_note_v2_shown")
     }
 }

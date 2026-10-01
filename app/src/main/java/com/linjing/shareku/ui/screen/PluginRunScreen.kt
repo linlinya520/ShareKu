@@ -97,7 +97,8 @@ fun PluginRunScreen(
                 createPluginWebView(
                     ctx,
                     plugin,
-                    "file://${File(plugin.dir, plugin.manifest.entry).absolutePath}"
+                    "file://${File(plugin.dir, plugin.manifest.entry).absolutePath}",
+                    granted = granted
                 ).also { webView = it }
             },
             onRelease = { v ->

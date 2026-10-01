@@ -18,7 +18,8 @@ fun createPluginWebView(
     context: Context,
     plugin: PluginInfo,
     loadUrl: String,
-    transparent: Boolean = false
+    transparent: Boolean = false,
+    granted: Set<String> = plugin.granted
 ): WebView {
     return WebView(context).apply {
         settings.javaScriptEnabled = true
@@ -48,7 +49,7 @@ fun createPluginWebView(
                 return true
             }
         }
-        addJavascriptInterface(PluginBridge(context, plugin, plugin.granted), "ShareKuBridge")
+        addJavascriptInterface(PluginBridge(context, plugin, granted), "ShareKuBridge")
         loadUrl(loadUrl)
     }
 }
