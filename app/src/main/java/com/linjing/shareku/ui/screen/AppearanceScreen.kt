@@ -2,6 +2,7 @@ package com.linjing.shareku.ui.screen
 
 import com.linjing.shareku.ui.component.AppTopBar
 import com.linjing.shareku.ui.component.AppSwitch
+import com.linjing.shareku.ui.component.AppSwitchRow
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,8 +38,15 @@ import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.component.WallpaperCropDialog
 import com.linjing.shareku.ui.component.MiuixExpandableSelect
+import com.linjing.shareku.ui.performance.SYSTEM_AUTO_DISPLAY_MODE_ID
+import com.linjing.shareku.ui.performance.applyPreferredDisplayMode
+import com.linjing.shareku.ui.performance.displayModePreferenceLabel
+import com.linjing.shareku.ui.performance.findActivityCompat
+import com.linjing.shareku.ui.performance.normalizePreferredDisplayModeId
+import com.linjing.shareku.ui.performance.supportedAppDisplayModes
 import com.linjing.shareku.ui.component.MiuixSettingsGroup
 import com.linjing.shareku.ui.theme.LocalUiStyle
+import com.linjing.shareku.ui.theme.resolveGlassTuning
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import com.linjing.shareku.ui.theme.ThemeMode
 import com.linjing.shareku.ui.theme.color.PaletteStyle
@@ -50,8 +58,6 @@ import java.io.File
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
-    if (!embedded) BackHandler(onBack = onBack)
-
     val scope = rememberCoroutineScope()
     val prefs = AppSingletons.preferencesManager
     val haptic = LocalHapticFeedback.current
@@ -273,6 +279,122 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                             })
                         }
                     }
+                }
+            }
+
+            // ═══ 屏幕帧率 ═══
+            Spacer(Modifier.height(16.dp))
+            Text("屏幕帧率", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            Text("选择应用运行时使用的屏幕刷新率档位（高刷更流畅、更耗电）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+
+            val hostActivity = LocalContext.current.findActivityCompat()
+            val supportedDisplayModes = remember(hostActivity) {
+                hostActivity?.supportedAppDisplayModes().orEmpty()
+            }
+            val storedDisplayModeId by prefs.screenDisplayModeId.collectAsState(initial = 0)
+            val selectedDisplayModeId = remember(storedDisplayModeId, supportedDisplayModes) {
+                normalizePreferredDisplayModeId(storedDisplayModeId, supportedDisplayModes)
+            }
+            val displayModeLabels = remember(supportedDisplayModes) {
+                listOf("自动（系统调度）") + supportedDisplayModes.map { displayModePreferenceLabel(it) }
+            }
+            val displayModeIds = remember(supportedDisplayModes) {
+                listOf(SYSTEM_AUTO_DISPLAY_MODE_ID) + supportedDisplayModes.map { it.modeId }
+            }
+            val selectedDisplayIndex = displayModeIds.indexOf(selectedDisplayModeId).coerceAtLeast(0)
+            val applyDisplayMode: (Int) -> Unit = { idx ->
+                val modeId = displayModeIds.getOrElse(idx) { SYSTEM_AUTO_DISPLAY_MODE_ID }
+                haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                runCatching { hostActivity?.applyPreferredDisplayMode(modeId) }
+                scope.launch { prefs.setScreenDisplayModeId(modeId) }
+            }
+
+            if (LocalUiStyle.current == "miuix") {
+                MiuixSettingsGroup(Modifier.fillMaxWidth()) {
+                    MiuixExpandableSelect(
+                        title = "屏幕帧率",
+                        options = displayModeLabels,
+                        selectedIndex = selectedDisplayIndex,
+                        onSelected = applyDisplayMode
+                    )
+                }
+            } else if (supportedDisplayModes.isEmpty()) {
+                Text("未获取到可用显示模式", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                displayModeLabels.forEachIndexed { i, label ->
+                    val selected = i == selectedDisplayIndex
+                    val isSingle = displayModeLabels.size == 1
+                    CustomCard(
+                        topStartCorner = if (isSingle || i == 0) 24.dp else 4.dp,
+                        topEndCorner = if (isSingle || i == 0) 24.dp else 4.dp,
+                        bottomStartCorner = if (isSingle || i == displayModeLabels.lastIndex) 24.dp else 4.dp,
+                        bottomEndCorner = if (isSingle || i == displayModeLabels.lastIndex) 24.dp else 4.dp,
+                        colors = if (selected)
+                            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+                        border = null,
+                        onClick = { applyDisplayMode(i) }
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Speed, null, Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Text(label, style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            RadioButton(selected = selected, onClick = { applyDisplayMode(i) })
+                        }
+                    }
+                }
+            }
+
+            // ═══ 动画与交互 ═══
+            Spacer(Modifier.height(16.dp))
+            Text("动画与交互", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            Text("页面切换与反馈动效的独立开关（关闭可提升流畅度 / 省电）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+            AnimationSwitches()
+
+            // ═══ 液态玻璃质感 ═══
+            Spacer(Modifier.height(16.dp))
+            Text("液态玻璃质感", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            Text("调节液态玻璃的折射 / 模糊 / 色散强度（清澈 ↔ 磨砂），拖动实时生效",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+
+            val glassDensity by prefs.glassDensity.collectAsState(initial = 0.5f)
+            val glassTuning = remember(glassDensity) { resolveGlassTuning(glassDensity) }
+            CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("质感档位", style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(glassTuning.presetLabel, style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    AdaptiveSlider(
+                        value = glassDensity.coerceIn(0f, 1f),
+                        onValueChange = { scope.launch { prefs.setGlassDensity(it) } },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        if (LocalUiStyle.current == "liquid") "当前为液态玻璃风格，拖动即实时生效"
+                        else "切换到「液态玻璃」风格后可见效果",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -720,6 +842,86 @@ private fun paletteStyleColor(style: PaletteStyle): Color = when (style) {
     PaletteStyle.CONTENT -> Color(0xFF607D8B)
     PaletteStyle.NEUTRAL -> Color(0xFF795548)
     PaletteStyle.MONOCHROME -> Color(0xFF424242)
+}
+
+/**
+ * 「动画与交互」开关区（自适应三套 UI：miuix 整组 / 其余单卡片）。
+ * 5 个开关均写入 PreferencesManager，全局生效。
+ */
+@Composable
+private fun AnimationSwitches() {
+    val prefs = AppSingletons.preferencesManager
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+
+    val backPreview by prefs.predictiveBackPreview.collectAsState(initial = true)
+    val backBlur by prefs.backTransitionBlur.collectAsState(initial = true)
+    val pageTransition by prefs.pageTransitionAnim.collectAsState(initial = true)
+    val skeleton by prefs.skeletonBreathing.collectAsState(initial = true)
+    val dockSlider by prefs.dockSliderMotion.collectAsState(initial = true)
+
+    data class AnimSwitch(
+        val title: String,
+        val subtitle: String,
+        val checked: Boolean,
+        val apply: suspend (Boolean) -> Unit
+    )
+
+    val items = listOf(
+        AnimSwitch("预见式返回预览", "手势返回时页面跟手预览（关闭 = 直接返回，更省电）", backPreview) { prefs.setPredictiveBackPreview(it) },
+        AnimSwitch("返回过渡模糊", "返回 / 转场时页面渐糊、渐清晰，更有层次感", backBlur) { prefs.setBackTransitionBlur(it) },
+        AnimSwitch("页面转场动画", "页面进入 / 退出的滑动与缩放（关闭 = 瞬时切换）", pageTransition) { prefs.setPageTransitionAnim(it) },
+        AnimSwitch("骨架呼吸动画", "加载占位符的轻微呼吸动效", skeleton) { prefs.setSkeletonBreathing(it) },
+        AnimSwitch("Dock 滑块动效", "底部指示滑块的液态跟随 / 拉伸", dockSlider) { prefs.setDockSliderMotion(it) }
+    )
+
+    val onToggle: (AnimSwitch) -> (Boolean) -> Unit = { item ->
+        { value ->
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            scope.launch { item.apply(value) }
+        }
+    }
+
+    if (LocalUiStyle.current == "miuix") {
+        MiuixSettingsGroup(Modifier.fillMaxWidth()) {
+            items.forEachIndexed { index, item ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                }
+                AppSwitchRow(
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    checked = item.checked,
+                    onChange = onToggle(item)
+                )
+            }
+        }
+    } else {
+        CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.padding(4.dp)) {
+                items.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+                    }
+                    AppSwitchRow(
+                        title = item.title,
+                        subtitle = item.subtitle,
+                        checked = item.checked,
+                        onChange = onToggle(item)
+                    )
+                }
+            }
+        }
+    }
 }
 
 class AppearanceActivity : ComponentActivity() {

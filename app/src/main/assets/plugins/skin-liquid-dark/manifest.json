@@ -1,0 +1,16 @@
+{
+  "id": "skin-liquid-dark",
+  "name": "液态深境",
+  "type": "skin",
+  "version": "1.0.0",
+  "author": "ShareKu",
+  "description": "液态玻璃风格 + 深色模式 + 磨砂质感 + 配套渐变壁纸",
+  "icon": "🌌",
+  "skin": {
+    "style": "liquid",
+    "darkMode": "DARK",
+    "dynamicColor": true,
+    "glassDensity": 0.65,
+    "wallpaper": "wallpaper.jpg"
+  }
+}

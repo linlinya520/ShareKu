@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- miuix-blur 声明 minSdk 33；液态玻璃效果本身只在 Android 13+ 启用（运行时自行守卫），
+         这里强制低版本清单合并，低版本设备不受影响 -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
+
     <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -120,6 +124,32 @@
         <!-- Settings: Changelog -->
         <activity
             android:name=".ui.screen.ChangelogActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Settings Search -->
+        <activity
+            android:name=".ui.screen.SettingsSearchActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <!-- Plugins -->
+        <activity
+            android:name=".ui.screen.PluginsActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <activity
+            android:name=".ui.screen.PluginRunActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
+        <activity
+            android:name=".ui.screen.PluginMarketActivity"
             android:enableOnBackInvokedCallback="true"
             android:exported="false"
             android:theme="@style/Theme.MaterialShareKu" />

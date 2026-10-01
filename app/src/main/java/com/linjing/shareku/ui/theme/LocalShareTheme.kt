@@ -113,6 +113,7 @@ fun LocalShareTheme(
     val view = LocalView.current
 
     val wallpaperSource by AppSingletons.preferencesManager.wallpaperSource.collectAsState(initial = "default")
+    val glassDensity by AppSingletons.preferencesManager.glassDensity.collectAsState(initial = 0.5f)
     val wallpaperEnabled = wallpaperSource != "none"
     val isLiquid = uiStyle == "liquid" && isRuntimeShaderSupported()
     // 动态系统壁纸透出：窗口后由系统绘制当前壁纸（含视频/动态壁纸），App 层留空透出
@@ -177,6 +178,8 @@ fun LocalShareTheme(
         // ② 前景层：玻璃组件在此引用上面的「壁纸背景层」
         CompositionLocalProvider(
             LocalUiStyle provides uiStyle,
+            // 液态玻璃质感档位（清澈/均衡/磨砂）→ 对各玻璃组件的参数做相对缩放
+            LocalGlassTuning provides resolveGlassTuning(glassDensity),
             // 动态壁纸透出模式下玻璃无法采样系统壁纸层 → 不提供 backdrop（组件自动降级为非玻璃材质）
             LocalGlassBackdrop provides if (isLiquid && !liveSystemWallpaper) glassBackdrop else null
         ) {

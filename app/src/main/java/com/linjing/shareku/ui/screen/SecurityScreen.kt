@@ -62,8 +62,6 @@ fun SecurityScreen(onBack: () -> Unit, embedded: Boolean = false) {
             passwordInput = authPassword
         }
     }
-if (!embedded) BackHandler { onBack() }
-
     val body: @Composable (Modifier) -> Unit = { m ->
         Column(m.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {

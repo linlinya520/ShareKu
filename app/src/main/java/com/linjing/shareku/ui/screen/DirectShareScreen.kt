@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -55,6 +56,7 @@ import com.linjing.shareku.peer.PeerDiscovery
 import com.linjing.shareku.peer.PeerTransferClient
 import com.linjing.shareku.peer.TransferProgress
 import com.linjing.shareku.ui.component.CustomCard
+import com.linjing.shareku.ui.component.SkeletonBox
 import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import kotlinx.coroutines.flow.first
@@ -156,8 +158,6 @@ fun DirectShareScreen(onBack: () -> Unit) {
         onDispose { peerDiscovery.stopScan() }
     }
 
-    BackHandler { onBack() }
-
     Scaffold(
         topBar = {
             AppTopBar(
@@ -218,7 +218,26 @@ fun DirectShareScreen(onBack: () -> Unit) {
             }
 
             // ═══ 设备列表 ═══
-            if (peers.isEmpty() && !isScanning) {
+            if (peers.isEmpty() && isScanning) {
+                // 扫描中：设备卡片骨架（呼吸占位，避免空白等待）
+                repeat(3) {
+                    CustomCard(cornerRadius = 20.dp, border = null, clickable = false, enableHaptic = false,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SkeletonBox(Modifier.size(32.dp), CircleShape)
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                SkeletonBox(Modifier.fillMaxWidth(0.46f).height(14.dp))
+                                Spacer(Modifier.height(7.dp))
+                                SkeletonBox(Modifier.fillMaxWidth(0.30f).height(12.dp))
+                            }
+                        }
+                    }
+                }
+            } else if (peers.isEmpty() && !isScanning) {
                 CustomCard(cornerRadius = 20.dp, border = null, clickable = false, enableHaptic = false,
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(

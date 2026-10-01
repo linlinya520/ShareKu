@@ -1,9 +1,18 @@
 package com.linjing.shareku.ui.screen
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -32,14 +41,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -156,15 +169,30 @@ fun DockLayout() {
         )
 
         // 日志页：Dock 布局下没有独立路由，用全屏层显示
-        if (showLog) {
-            Dialog(
-                onDismissRequest = { showLog = false },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
+        // 底部滑入滑出转场（布局内层，替代 Dialog：动画可控、无独立窗口闪变）
+        AnimatedVisibility(
+            visible = showLog,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(300, easing = DockNavEasing)
+            ) + fadeIn(tween(200)),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = tween(300, easing = DockNavEasing)
+            ) + fadeOut(tween(200))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .pointerInput(Unit) { detectTapGestures { } }
             ) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    LogScreen(onBack = { showLog = false })
-                }
+                LogScreen(onBack = { showLog = false })
             }
+        }
+        // 返回键：日志层显示时关闭日志（此时的返回语义 = 关闭这一层）
+        if (showLog) {
+            BackHandler { showLog = false }
         }
 
         // 首次启用液态玻璃的「预渲染」引导：把一次性重活显式化，避免使用时被冷启动卡顿打扰
@@ -181,6 +209,35 @@ private val dockItems: List<Triple<String, ImageVector, Int>> = listOf(
     Triple("关于", Icons.Default.Info, 3)
 )
 
+/* ─── 液态水珠滑块物理（Dock 指示器） ─── */
+
+/** 统一转场缓动（快进慢出，与 NavHost / 窗口动画一致） */
+private val DockNavEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+/** 弹簧刚度（格/s²·格）：越大越跟手、越小滞后越明显 */
+private const val DOCK_SLIDER_K = 900f
+/** 阻尼（1/s）：越小越"糯"（拖尾越明显、回弹越多） */
+private const val DOCK_SLIDER_C = 40f
+
+/** Dock 滑块逐帧物理暂存（普通 var：避免每帧重组） */
+private class DockSliderPhysics {
+    var actual = Float.NaN  // 显示位置（格）
+    var vel = 0f            // 速度（格/s）
+    var smoothV = 0f        // 平滑速度（格/s，驱动拉伸）
+    var dir = 1f            // 运动方向（1=右，-1=左）
+    var stretch = 0f        // 平滑后的拉伸量
+    var lastT = 0L
+
+    fun reset(target: Float) {
+        actual = target
+        vel = 0f
+        smoothV = 0f
+        dir = 1f
+        stretch = 0f
+        lastT = 0L
+    }
+}
+
 @Composable
 private fun DockBar(
     pagerState: PagerState,
@@ -194,10 +251,58 @@ private fun DockBar(
     val liquid = isLiquidGlassActive()
     val globalBackdrop = LocalGlassBackdrop.current
     val haptic = LocalHapticFeedback.current
+    // 动画开关：Dock 滑块动效（关 = 直接跟手，无滞后 / 拉伸）
+    val dockMotion by AppSingletons.preferencesManager.dockSliderMotion.collectAsState(initial = true)
 
-    // 滑块位置：当前页 + 拖动进度 → 实时跟手
+    // 滑块位置：当前页 + 拖动进度 → 实时跟手（这是物理系统的"目标位置"）
     val sliderPos by remember {
         derivedStateOf { pagerState.currentPage + pagerState.currentPageOffsetFraction }
+    }
+
+    // ═══ 液态水珠物理：滑块"粘性跟随" + 运动方向拉伸 ═══
+    // 拖动时滑块被"拽着走"：滞后跟随（越拖得快、落后越多）、朝运动方向拉长、纵向微压扁；
+    // 停止/松手后以欠阻尼弹簧追上并回弹到位 —— 液滴质感。
+    val sliderVis = remember { mutableFloatStateOf(0f) }      // 显示位置（格）
+    val sliderStretch = remember { mutableFloatStateOf(0f) }  // 拉伸量（0..0.30）
+    val sliderOrigin = remember { mutableFloatStateOf(0f) }   // 拉伸原点（0=左固定，1=右固定）
+    val sliderPhys = remember { DockSliderPhysics() }
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { t ->
+                val target = sliderPos
+                val ph = sliderPhys
+                if (ph.actual.isNaN()) ph.reset(target)
+                val dt = if (ph.lastT == 0L) 1f / 60f
+                else ((t - ph.lastT) / 1_000_000_000f).coerceIn(1f / 240f, 1f / 30f)
+                ph.lastT = t
+                if (!dockMotion) {
+                    // 开关关闭：直接对齐（无滞后 / 拉伸 / 回弹）
+                    ph.actual = target
+                    ph.vel = 0f; ph.smoothV = 0f; ph.stretch = 0f
+                } else {
+                    val lag = target - ph.actual
+                    // 二阶弹簧（欠阻尼）：滞后跟随 + 追逐回弹
+                    ph.vel += (lag * DOCK_SLIDER_K - ph.vel * DOCK_SLIDER_C) * dt
+                    ph.actual += ph.vel * dt
+                    ph.smoothV += (ph.vel - ph.smoothV) * (dt * 12f).coerceAtMost(1f)
+                    if (kotlin.math.abs(ph.vel) > 0.15f) ph.dir = if (ph.vel > 0f) 1f else -1f
+                    // 拉伸 = 滞后量 + 速度共同驱动（液滴被拖拽拉长；收敛力度）
+                    val st = (kotlin.math.abs(lag) * 0.18f + kotlin.math.abs(ph.smoothV) * 0.04f)
+                        .coerceAtMost(0.16f)
+                    ph.stretch += (st - ph.stretch) * (dt * 16f).coerceAtMost(1f)
+                    // 静止收敛：精确对齐（消除浮点残余）
+                    if (!pagerState.isScrollInProgress &&
+                        kotlin.math.abs(lag) < 0.002f && kotlin.math.abs(ph.vel) < 0.03f
+                    ) {
+                        ph.actual = target; ph.vel = 0f; ph.smoothV = 0f; ph.stretch = 0f
+                    }
+                }
+                sliderVis.floatValue = ph.actual
+                sliderStretch.floatValue = ph.stretch
+                val ox = if (ph.dir > 0f) 0f else 1f
+                if (ox != sliderOrigin.floatValue) sliderOrigin.floatValue = ox
+            }
+        }
     }
 
     BoxWithConstraints(
@@ -285,51 +390,62 @@ private fun DockBar(
         // - 采样「全局壁纸 + Dock 玻璃板」→ 滑块内部 = 毛玻璃底 + 扭曲折射 + 色散（两种玻璃融合）
         // - depthEffect = true：折射方向叠加径向分量 → 液滴鼓包感
         // - chromaticAberration = true：边缘色散（彩虹条纹）
+        // - 液态水珠物理：滞后跟随（sliderVis）+ 方向拉伸（sliderStretch）
         // 先在组合上下文取色：DrawScope 的绘制 lambda 里不允许调用 Composable
         val sliderTint = MaterialTheme.colorScheme.primary
         val sliderBackdrop = if (liquid && globalBackdrop != null) {
             rememberCombinedBackdrop(globalBackdrop, barBackdrop)
         } else null
-        Box(
-            Modifier
-                .offset {
-                    IntOffset(
-                        x = kotlin.math.round(innerPad.toPx() + itemWidth.toPx() * sliderPos).toInt(),
-                        y = 0
-                    )
-                }
-                .width(itemWidth)
-                .fillMaxHeight()
-                .padding(horizontal = 3.dp, vertical = innerPad)
-                .clip(capsule)
-                .then(
-                    if (sliderBackdrop != null) {
-                        Modifier.drawBackdrop(
-                            backdrop = sliderBackdrop,
-                            shape = { capsule },
-                            effects = {
-                                vibrancy()
-                                blur(1.dp.toPx())
-                                lens(
-                                    refractionHeight = 18.dp.toPx(),
-                                    refractionAmount = 30.dp.toPx(),
-                                    depthEffect = true,
-                                    chromaticAberration = true
-                                )
-                            },
-                            highlight = { Highlight(width = 1.dp, blurRadius = 2.dp) },
-                            onDrawSurface = {
-                                drawRect(sliderTint.copy(alpha = 0.12f))
-                            }
-                        )
-                    } else {
-                        Modifier.background(
-                            sliderTint.copy(alpha = 0.22f),
-                            capsule
+        // 外层裁剪容器：液滴拉伸/超调时不越过 Dock 边界
+        Box(Modifier.matchParentSize().clip(capsule)) {
+            Box(
+                Modifier
+                    .offset {
+                        IntOffset(
+                            x = kotlin.math.round(innerPad.toPx() + itemWidth.toPx() * sliderVis.floatValue).toInt(),
+                            y = 0
                         )
                     }
-                )
-        )
+                    .graphicsLayer {
+                        // 液滴被拖拽时：朝运动方向拉长、纵向微压扁（体积感）
+                        val s = sliderStretch.floatValue
+                        scaleX = 1f + s
+                        scaleY = 1f - s * 0.4f
+                        transformOrigin = TransformOrigin(sliderOrigin.floatValue, 0.5f)
+                    }
+                    .width(itemWidth)
+                    .fillMaxHeight()
+                    .padding(horizontal = 3.dp, vertical = innerPad)
+                    .clip(capsule)
+                    .then(
+                        if (sliderBackdrop != null) {
+                            Modifier.drawBackdrop(
+                                backdrop = sliderBackdrop,
+                                shape = { capsule },
+                                effects = {
+                                    vibrancy()
+                                    blur(1.dp.toPx())
+                                    lens(
+                                        refractionHeight = 18.dp.toPx(),
+                                        refractionAmount = 30.dp.toPx(),
+                                        depthEffect = true,
+                                        chromaticAberration = true
+                                    )
+                                },
+                                highlight = { Highlight(width = 1.dp, blurRadius = 2.dp) },
+                                onDrawSurface = {
+                                    drawRect(sliderTint.copy(alpha = 0.12f))
+                                }
+                            )
+                        } else {
+                            Modifier.background(
+                                sliderTint.copy(alpha = 0.22f),
+                                capsule
+                            )
+                        }
+                    )
+            )
+        }
 
         // ③ 图标行（最上层：图标永远清晰锐利）
         Row(

@@ -42,8 +42,6 @@ fun ServerScreen(onBack: () -> Unit, embedded: Boolean = false) {
     LaunchedEffect(port) { if (portInput.toIntOrNull() != port) portInput = port.toString() }
     val enableWebDav by prefs.enableWebDav.collectAsState(initial = true)
 
-    if (!embedded) BackHandler { onBack() }
-
     val body: @Composable (Modifier) -> Unit = { m ->
         Column(m.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {

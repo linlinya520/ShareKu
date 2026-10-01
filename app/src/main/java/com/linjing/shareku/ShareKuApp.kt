@@ -1,9 +1,16 @@
 package com.linjing.shareku
 
+import android.app.Activity
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.os.Bundle
+import com.linjing.shareku.ui.performance.applyPreferredDisplayMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -12,6 +19,12 @@ import java.util.Date
 import java.util.Locale
 
 class ShareKuApp : Application() {
+    // 屏幕刷新率档位：设置值缓存 + 最近一个前台 Activity（供冷启动竞态补偿与实时生效）
+    @Volatile
+    private var cachedScreenDisplayModeId: Int = 0
+    private var lastActivityRef: java.lang.ref.WeakReference<Activity>? = null
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
         super.onCreate()
         // 未捕获崩溃自动落盘（含后台线程），方便无 adb 的设备取证
@@ -25,6 +38,43 @@ class ShareKuApp : Application() {
         if (procName?.contains(":shizuku") == true) return
         AppSingletons.init(this)
         createNotificationChannels()
+        installDisplayModeHooks()
+    }
+
+    /**
+     * 屏幕帧率档位：
+     * ① 每个 Activity 创建时立即应用当前保存的档位；
+     * ② 监听设置变化，实时应用到当前 Activity（补偿冷启动时 DataStore 尚未读取的竞态）。
+     */
+    private fun installDisplayModeHooks() {
+        appScope.launch {
+            AppSingletons.preferencesManager.screenDisplayModeId.collect { modeId ->
+                cachedScreenDisplayModeId = modeId
+                lastActivityRef?.get()?.let { activity ->
+                    activity.runOnUiThread {
+                        runCatching { activity.applyPreferredDisplayMode(modeId) }
+                    }
+                }
+            }
+        }
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                lastActivityRef = java.lang.ref.WeakReference(activity)
+                runCatching { activity.applyPreferredDisplayMode(cachedScreenDisplayModeId) }
+            }
+
+            override fun onActivityResumed(activity: Activity) {
+                lastActivityRef = java.lang.ref.WeakReference(activity)
+            }
+
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {
+                if (lastActivityRef?.get() === activity) lastActivityRef = null
+            }
+        })
     }
 
     private fun createNotificationChannels() {

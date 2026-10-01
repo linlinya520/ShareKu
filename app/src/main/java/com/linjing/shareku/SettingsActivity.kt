@@ -9,9 +9,11 @@ import com.linjing.shareku.ui.screen.AboutActivity
 import com.linjing.shareku.ui.screen.AppearanceActivity
 import com.linjing.shareku.ui.screen.CacheCleanupActivity
 import com.linjing.shareku.ui.screen.FileOpsActivity
+import com.linjing.shareku.ui.screen.PluginsActivity
 import com.linjing.shareku.ui.screen.SecurityActivity
 import com.linjing.shareku.ui.screen.ServerActivity
 import com.linjing.shareku.ui.screen.SettingsScreen
+import com.linjing.shareku.ui.screen.SettingsSearchActivity
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 
 class SettingsActivity : ComponentActivity() {
@@ -27,7 +29,9 @@ class SettingsActivity : ComponentActivity() {
                     onFileOps = { startActivity(Intent(this@SettingsActivity, FileOpsActivity::class.java)) },
                     onCacheCleanup = { startActivity(Intent(this@SettingsActivity, CacheCleanupActivity::class.java)) },
                     onAppearance = { startActivity(Intent(this@SettingsActivity, AppearanceActivity::class.java)) },
-                    onAbout = { startActivity(Intent(this@SettingsActivity, AboutActivity::class.java)) }
+                    onAbout = { startActivity(Intent(this@SettingsActivity, AboutActivity::class.java)) },
+                    onSearch = { startActivity(Intent(this@SettingsActivity, SettingsSearchActivity::class.java)) },
+                    onPlugins = { startActivity(Intent(this@SettingsActivity, PluginsActivity::class.java)) }
                 )
             }
         }

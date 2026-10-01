@@ -47,6 +47,7 @@ code { font-size:12px; opacity:.75; word-break:break-all; }
   <button class="alt" onclick="doCopy()">复制服务器地址</button>
   <button class="alt" onclick="doShare()">分享一句问候</button>
   <button class="alt" onclick="doHttp()">网络请求测试</button>
+  <div id="httpResult" style="margin-top:10px;font-size:12px;opacity:.75;word-break:break-all;"></div>
 </div>
 
 <div class="card">
@@ -110,8 +111,12 @@ function doShare(){
 }
 
 function doHttp(){
+  var el = document.getElementById('httpResult');
+  if (el) { el.textContent = '请求中…'; }
   var r = call('http.request', { url: 'https://cdn.jsdelivr.net/gh/linlinya520/ShareKu@main/plugins/registry.json', method: 'GET' });
-  if (r.ok) { alert('HTTP ' + r.data.status + '，返回 ' + (r.data.body || '').length + ' 字符'); }
+  var msg = r.ok ? ('HTTP ' + r.data.status + '，返回 ' + (r.data.body || '').length + ' 字符') : ('失败：' + (r.error || '未知错误'));
+  if (el) { el.textContent = msg; }
+  alert(msg);
 }
 
 refresh();

@@ -329,17 +329,24 @@ fun FileBrowserDialog(
                             }
                         }
                     }
-                    // 加载中
+                    // 加载中：骨架屏呼吸（替代转圈，观感更稳）
                     shizukuMode && shizukuLoading -> {
-                        Box(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator()
-                                Spacer(Modifier.height(8.dp))
-                                Text("加载中...", style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            repeat(7) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    SkeletonBox(Modifier.size(36.dp), androidx.compose.foundation.shape.CircleShape)
+                                    Spacer(Modifier.size(14.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        SkeletonBox(Modifier.fillMaxWidth(0.72f).height(14.dp))
+                                        Spacer(Modifier.height(8.dp))
+                                        SkeletonBox(Modifier.fillMaxWidth(0.40f).height(12.dp))
+                                    }
+                                }
                             }
                         }
                     }

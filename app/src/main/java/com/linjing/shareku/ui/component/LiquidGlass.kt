@@ -18,6 +18,7 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.isRuntimeShaderSupported
 import com.linjing.shareku.ui.theme.LocalGlassBackdrop
+import com.linjing.shareku.ui.theme.LocalGlassTuning
 import com.linjing.shareku.ui.theme.LocalUiStyle
 
 /** 当前是否处于「液态玻璃」风格且玻璃源可用 */
@@ -59,17 +60,22 @@ fun Modifier.liquidGlass(
     val backdrop = LocalGlassBackdrop.current ?: return this
     if (LocalUiStyle.current != "liquid") return this
 
+    val tuning = LocalGlassTuning.current
     val cornerShape = shape as? CornerBasedShape
     val canRefract = isRuntimeShaderSupported() && cornerShape != null
     val surfaceColor = MaterialTheme.colorScheme.surface
+    val effSurfaceAlpha = (surfaceAlpha * tuning.surfaceAlphaScale).coerceIn(0f, 0.6f)
+    val effBlurRadius = blurRadius * tuning.blurScale
+    val effRefractionHeight = refractionHeight * tuning.refractionScale
+    val effRefractionAmount = refractionAmount * tuning.refractionScale
     val effects: BackdropEffectScope.() -> Unit = {
         // 顺序：colorFilter → blur → lens
         vibrancy()
-        blur(blurRadius.toPx(), TileMode.Clamp)
+        blur(effBlurRadius.toPx(), TileMode.Clamp)
         if (canRefract) {
             val cornerRadius = cornerShape!!.topStart.toPx(size, this)
-            val height = minOf(refractionHeight.toPx(), cornerRadius)
-            val amount = minOf(refractionAmount.toPx(), size.minDimension * 0.5f)
+            val height = minOf(effRefractionHeight.toPx(), cornerRadius)
+            val amount = minOf(effRefractionAmount.toPx(), size.minDimension * 0.5f)
             if (height > 0f && amount > 0f) {
                 // chromaticAberration = dispersion → 边缘光谱色散（玻璃感核心）
                 lens(height, amount, chromaticAberration = dispersion)
@@ -77,8 +83,8 @@ fun Modifier.liquidGlass(
         }
     }
     val onSurface: DrawScope.() -> Unit = {
-        if (surfaceAlpha > 0f) {
-            drawRect(surfaceColor.copy(alpha = surfaceAlpha))
+        if (effSurfaceAlpha > 0f) {
+            drawRect(surfaceColor.copy(alpha = effSurfaceAlpha))
         }
     }
 

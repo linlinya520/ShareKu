@@ -11,6 +11,16 @@
       "icon": "🧩",
       "download": "https://cdn.jsdelivr.net/gh/linlinya520/ShareKu@main/plugins/hello-demo.zip",
       "capabilities": ["device.info", "server.info", "ui.toast", "share.text", "clipboard.write", "home.card", "network.http"]
+    },
+    {
+      "id": "skin-liquid-dark",
+      "name": "液态深境",
+      "version": "1.0.0",
+      "author": "ShareKu",
+      "description": "液态玻璃风格 + 深色模式 + 磨砂质感 + 配套渐变壁纸",
+      "icon": "🌌",
+      "download": "https://cdn.jsdelivr.net/gh/linlinya520/ShareKu@main/plugins/skin-liquid-dark.zip",
+      "capabilities": []
     }
   ]
 }

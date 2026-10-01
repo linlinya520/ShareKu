@@ -585,6 +585,14 @@ if (written - lastBroadcast >= 1024 * 1024) {
                         handle { handleWebDav(call) }
                     }
                 }
+                // 根路径的 OPTIONS 也返回 DAV 标识：部分 Windows 版本会先对 / 做能力探测，
+                // 之前返回 405 会让重定向器直接放弃（映射失败 53/64）
+                options("/") {
+                    call.response.headers.append("Allow", "GET, PUT, DELETE, OPTIONS, PROPFIND, MKCOL, COPY, MOVE, HEAD")
+                    call.response.headers.append("DAV", "1,2")
+                    call.response.headers.append("MS-Author-Via", "DAV")
+                    call.respondText("")
+                }
             }
         }
     }
@@ -982,6 +990,12 @@ p{font-size:14px;color:#636e72;line-height:1.5}
                     call.response.headers.append(HttpHeaders.ContentType, guessContentType(file).toString())
                     call.response.headers.append(HttpHeaders.ContentLength, file.length().toString())
                     call.respondText("")
+                } else if (file != null && file.isDirectory && isAllowed(file)) {
+                    // 目录的 HEAD：Windows 重定向器会先探测集合本身
+                    logRequest(call, 200)
+                    call.response.headers.append(HttpHeaders.ContentType, "httpd/unix-directory")
+                    call.response.headers.append(HttpHeaders.ContentLength, "0")
+                    call.respondText("")
                 } else { logRequest(call, 404); call.respondText("404", status = HttpStatusCode.NotFound) }
             }
             method == "GET" -> {
@@ -1016,7 +1030,10 @@ p{font-size:14px;color:#636e72;line-height:1.5}
                 }
                 sb.append("</D:multistatus>")
                 logRequest(call, 207)
-                call.respondText(sb.toString(), ContentType.Text.Xml)
+                // Windows WebDAV 重定向器强制要求 PROPFIND 返回 207 Multi-Status（返回 200 会导致映射报错 53/64）
+                call.response.headers.append("DAV", "1,2")
+                call.response.headers.append("MS-Author-Via", "DAV")
+                call.respondText(sb.toString(), ContentType.Text.Xml, HttpStatusCode.MultiStatus)
             }
             method == "PUT" -> {
                 if (!allowUpload) {
@@ -1067,6 +1084,14 @@ p{font-size:14px;color:#636e72;line-height:1.5}
                     call.respondText("Failed", status = HttpStatusCode.Conflict)
                 }
             }
+            else -> {
+                // 未实现的方法（LOCK/UNLOCK/PROPPATCH 等）必须给出明确响应：
+                // 否则连接悬空，Windows 重定向器会判定「指定的网络名不再可用 (64)」
+                logRequest(call, 501)
+                call.response.headers.append("DAV", "1,2")
+                call.response.headers.append("MS-Author-Via", "DAV")
+                call.respondText("Not Implemented", status = HttpStatusCode.NotImplemented)
+            }
         }
     }
 
@@ -1104,7 +1129,7 @@ p{font-size:14px;color:#636e72;line-height:1.5}
             sb.append("<D:getcontenttype>${guessContentType(file)}</D:getcontenttype>")
             sb.append("<D:getcontentlength>${file.length()}</D:getcontentlength>")
         }
-        sb.append("<D:getlastmodified>${java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US).format(java.util.Date(file.lastModified()))}</D:getlastmodified>")
+        sb.append("<D:getlastmodified>${java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("GMT") }.format(java.util.Date(file.lastModified()))}</D:getlastmodified>")
         sb.append("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>")
         sb.append("</D:response>")
     }

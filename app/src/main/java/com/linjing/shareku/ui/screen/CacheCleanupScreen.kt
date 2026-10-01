@@ -62,8 +62,6 @@ fun CacheCleanupScreen(onBack: () -> Unit, embedded: Boolean = false) {
         cacheSizeBytes = CacheUtils.getCacheSize(context)
     }
 
-    if (!embedded) androidx.activity.compose.BackHandler { onBack() }
-
     val body: @Composable (Modifier) -> Unit = { m ->
         Column(
             m.padding(horizontal = 16.dp),

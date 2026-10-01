@@ -3,6 +3,14 @@
     <style name="Theme.MaterialShareKu" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- 统一 Activity 转场：新页从右滑入 / 返回时顶页滑出 + 底层轻移恢复（miuix 经典风） -->
+        <item name="android:windowAnimationStyle">@style/ShareKuWindowAnimation</item>
+    </style>
+    <style name="ShareKuWindowAnimation" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/activity_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/activity_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/activity_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/activity_close_exit</item>
     </style>
     <style name="Theme.MaterialShareKu.ShareSheet" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>

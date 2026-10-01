@@ -46,8 +46,6 @@ fun FileOpsScreen(onBack: () -> Unit, embedded: Boolean = false) {
     val allowPeerReceive by prefs.allowPeerReceive.collectAsState(initial = true)
     var showDirBrowser by remember { mutableStateOf(false) }
 
-    if (!embedded) BackHandler { onBack() }
-
     val body: @Composable (Modifier) -> Unit = { m ->
         Column(m.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {

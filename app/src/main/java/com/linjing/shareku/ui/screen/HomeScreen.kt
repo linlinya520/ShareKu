@@ -51,6 +51,7 @@ import com.linjing.shareku.service.ServerForegroundService
 import com.linjing.shareku.ui.component.AdaptiveButton
 import com.linjing.shareku.ui.component.CustomCard
 import com.linjing.shareku.ui.component.FileBrowserDialog
+import com.linjing.shareku.ui.component.PluginHomeCards
 import com.linjing.shareku.ui.component.QrCodeCard
 import com.linjing.shareku.ui.theme.LocalUiStyle
 import com.linjing.shareku.ui.theme.ShareKuAnimationSpecs
@@ -326,6 +327,9 @@ fun HomeScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            // ── 插件卡片（自定义主页内容；无插件时自动隐藏）──
+            PluginHomeCards()
 
             // ── 端口 ──
             CustomCard(

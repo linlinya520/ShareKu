@@ -31,7 +31,9 @@ fun SettingsScreen(
     onFileOps: () -> Unit,
     onCacheCleanup: () -> Unit,
     onAppearance: () -> Unit,
-    onAbout: () -> Unit
+    onAbout: () -> Unit,
+    onSearch: () -> Unit,
+    onPlugins: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
 
@@ -70,6 +72,34 @@ fun SettingsScreen(
                 }
             }
 
+            // ── 搜索入口 ──
+            item {
+                CustomCard(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    cornerRadius = 16.dp,
+                    border = null,
+                    onClick = onSearch
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "搜索设置",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             // ── 卡片列表 (first/middle/last R角衔接) ──
             val items = listOf(
                 SettingEntry("安全", "身份验证 · 连接确认", Icons.Default.Lock, onSecurity),
@@ -77,6 +107,7 @@ fun SettingsScreen(
                 SettingEntry("文件操作", "上传 · 覆盖 · 删除", Icons.Default.Folder, onFileOps),
                 SettingEntry("缓存清理", "手动清理 · 自动清理间隔", Icons.Default.Delete, onCacheCleanup),
                 SettingEntry("外观", "深色模式 · 莫奈取色 · 配色方案", Icons.Default.Palette, onAppearance),
+                SettingEntry("插件", "安装 · 管理 · 插件生态", Icons.Default.Extension, onPlugins),
                 SettingEntry("关于", "版本信息 · 开发者 · 致谢", Icons.Default.Info, onAbout),
             )
 

@@ -38,6 +38,10 @@ class PreferencesManager(private val context: Context) {
     val receiveDir: Flow<String> = context.dataStore.data.map { it[KEY_RECEIVE_DIR] ?: "/sdcard/Download/ShareKu" }
     val enableLocationKeepAlive: Flow<Boolean> = context.dataStore.data.map { it[KEY_LOCATION_KEEPALIVE] ?: true }
     val uiStyle: Flow<String> = context.dataStore.data.map { it[KEY_UI_STYLE] ?: "material" }
+    // 屏幕刷新率档位（0 = 自动；其余为 Display.Mode.modeId）
+    val screenDisplayModeId: Flow<Int> = context.dataStore.data.map { it[KEY_SCREEN_DISPLAY_MODE] ?: 0 }
+    // 液态玻璃质感档位（0 = 清澈，0.5 = 均衡，1 = 磨砂）
+    val glassDensity: Flow<Float> = context.dataStore.data.map { it[KEY_GLASS_DENSITY] ?: 0.5f }
     // 全局壁纸 / 布局
     val wallpaperSource: Flow<String> = context.dataStore.data.map { it[KEY_WALLPAPER_SOURCE] ?: "default" }
     val wallpaperPath: Flow<String> = context.dataStore.data.map { it[KEY_WALLPAPER_PATH] ?: "" }
@@ -55,6 +59,18 @@ class PreferencesManager(private val context: Context) {
     val liquidPreRenderDone: Flow<Boolean> = context.dataStore.data.map { it[KEY_LIQUID_PRERENDER_DONE] ?: false }
     // 设备直连接收开关（关闭后拒绝 /api/peer-upload）
     val allowPeerReceive: Flow<Boolean> = context.dataStore.data.map { it[KEY_ALLOW_PEER_RECEIVE] ?: true }
+
+    // ═══ 动画与交互（用户可自由开关）═══
+    /** 返回过渡模糊：返回/转场时页面渐糊 / 渐清晰 */
+    val backTransitionBlur: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACK_BLUR] ?: true }
+    /** 页面转场动画：进入/退出的滑动与缩放（关 = 瞬时切换，更省电） */
+    val pageTransitionAnim: Flow<Boolean> = context.dataStore.data.map { it[KEY_PAGE_TRANSITION] ?: true }
+    /** 骨架呼吸动画：加载占位符轻微呼吸 */
+    val skeletonBreathing: Flow<Boolean> = context.dataStore.data.map { it[KEY_SKELETON_BREATH] ?: true }
+    /** Dock 滑块动效：拖拽时的液态跟随 / 拉伸 */
+    val dockSliderMotion: Flow<Boolean> = context.dataStore.data.map { it[KEY_DOCK_MOTION] ?: true }
+    /** 预见式返回预览：手势返回时跟手预览（关 = 直接完成返回，更省电） */
+    val predictiveBackPreview: Flow<Boolean> = context.dataStore.data.map { it[KEY_PREDICTIVE_PREVIEW] ?: true }
 
     /** Write-safe receive directory: if configured dir is unwritable, fall back to app files dir. */
     fun getReceiveDirFile(context: Context, configuredPath: String): File {
@@ -89,6 +105,8 @@ class PreferencesManager(private val context: Context) {
     suspend fun setReceiveDir(value: String) { context.dataStore.edit { it[KEY_RECEIVE_DIR] = value } }
     suspend fun setEnableLocationKeepAlive(value: Boolean) { context.dataStore.edit { it[KEY_LOCATION_KEEPALIVE] = value } }
     suspend fun setUiStyle(value: String) { context.dataStore.edit { it[KEY_UI_STYLE] = value } }
+    suspend fun setScreenDisplayModeId(value: Int) { context.dataStore.edit { it[KEY_SCREEN_DISPLAY_MODE] = value } }
+    suspend fun setGlassDensity(value: Float) { context.dataStore.edit { it[KEY_GLASS_DENSITY] = value } }
     suspend fun setWallpaperSource(value: String) { context.dataStore.edit { it[KEY_WALLPAPER_SOURCE] = value } }
     suspend fun setWallpaperPath(value: String) { context.dataStore.edit { it[KEY_WALLPAPER_PATH] = value } }
     suspend fun setWallpaperOverlay(value: Float) { context.dataStore.edit { it[KEY_WALLPAPER_OVERLAY] = value } }
@@ -102,6 +120,12 @@ class PreferencesManager(private val context: Context) {
     suspend fun setVideoVolume(value: Float) { context.dataStore.edit { it[KEY_VIDEO_VOLUME] = value } }
     suspend fun setLiquidPreRenderDone(value: Boolean) { context.dataStore.edit { it[KEY_LIQUID_PRERENDER_DONE] = value } }
     suspend fun setAllowPeerReceive(value: Boolean) { context.dataStore.edit { it[KEY_ALLOW_PEER_RECEIVE] = value } }
+    // ═══ 动画与交互 ═══
+    suspend fun setBackTransitionBlur(value: Boolean) { context.dataStore.edit { it[KEY_BACK_BLUR] = value } }
+    suspend fun setPageTransitionAnim(value: Boolean) { context.dataStore.edit { it[KEY_PAGE_TRANSITION] = value } }
+    suspend fun setSkeletonBreathing(value: Boolean) { context.dataStore.edit { it[KEY_SKELETON_BREATH] = value } }
+    suspend fun setDockSliderMotion(value: Boolean) { context.dataStore.edit { it[KEY_DOCK_MOTION] = value } }
+    suspend fun setPredictiveBackPreview(value: Boolean) { context.dataStore.edit { it[KEY_PREDICTIVE_PREVIEW] = value } }
     companion object {
         private val KEY_PORT = intPreferencesKey("port")
     private val KEY_SHARE_PORT = intPreferencesKey("share_port")
@@ -117,6 +141,8 @@ class PreferencesManager(private val context: Context) {
         private val KEY_UPLOAD_SORT_TYPE = booleanPreferencesKey("upload_sort_type")
         private val KEY_CONFIRM = booleanPreferencesKey("confirm")
     private val KEY_UI_STYLE = stringPreferencesKey("ui_style") // "material" | "miuix" | "liquid"
+        private val KEY_SCREEN_DISPLAY_MODE = intPreferencesKey("screen_display_mode_id")
+        private val KEY_GLASS_DENSITY = floatPreferencesKey("glass_density")
         private val KEY_SHARED_DIR = stringPreferencesKey("shared_dir")
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -138,5 +164,11 @@ class PreferencesManager(private val context: Context) {
         private val KEY_VIDEO_VOLUME = floatPreferencesKey("video_volume")
         private val KEY_LIQUID_PRERENDER_DONE = booleanPreferencesKey("liquid_prerender_done")
         private val KEY_ALLOW_PEER_RECEIVE = booleanPreferencesKey("allow_peer_receive")
+        // 动画与交互
+        private val KEY_BACK_BLUR = booleanPreferencesKey("back_transition_blur")
+        private val KEY_PAGE_TRANSITION = booleanPreferencesKey("page_transition_anim")
+        private val KEY_SKELETON_BREATH = booleanPreferencesKey("skeleton_breathing")
+        private val KEY_DOCK_MOTION = booleanPreferencesKey("dock_slider_motion")
+        private val KEY_PREDICTIVE_PREVIEW = booleanPreferencesKey("predictive_back_preview")
     }
 }

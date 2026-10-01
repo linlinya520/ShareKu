@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="true"
+    android:interpolator="@android:interpolator/fast_out_slow_in">
+    <!-- 旧页面向左轻移 22%（层次感，等待被新页覆盖） -->
+    <translate
+        android:fromXDelta="0"
+        android:toXDelta="-22%p"
+        android:duration="320" />
+</set>

@@ -27,7 +27,6 @@ import com.linjing.shareku.ui.theme.ShareThemeWrapper
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangelogScreen(onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
     val haptic = LocalHapticFeedback.current
 
     data class ChangelogEntry(val version: String, val date: String, val items: List<String>)

@@ -12,8 +12,8 @@ android {
         applicationId = "com.linjing.shareku"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.4.0"
+        versionCode = 10
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -120,9 +120,12 @@ dependencies {
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
-    // Miuix（MIUI 风格 UI 组件库，设置-外观可切换）
+    // Miuix（MIUI 风格 UI 组件库；0.9.3 全模块：ui / preference / blur，本地修复 minCompileSdk 37->36。
+    // 注：0.9.4 会拉起 compose 1.12 链（要求 AGP 9.1 + compileSdk 37），当前构建环境暂不满足；
+    // 0.9.3 已包含 WindowListPopup / Dropdown / ListPopup 原生弹窗组件与 blur 模块，功能等价。）
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.3")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-blur:0.9.3")
     // Liquid Glass（苹果液态玻璃效果，本地修复 minCompileSdk 37->36）
     implementation("io.github.kyant0:backdrop-android:2.0.1")
     // backdrop 的 lens() 折射效果依赖 shapes（同样本地修复 minCompileSdk 37->36）
