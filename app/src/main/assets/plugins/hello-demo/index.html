@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>示例插件</title>
+<style>
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin:0; padding:20px; font-family:-apple-system, "HarmonyOS Sans SC", "PingFang SC", "MiSans", sans-serif; background:#f5f5f7; color:#1c1c1e; }
+.card { background:#fff; border-radius:16px; padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+@media (prefers-color-scheme: dark){
+  body { background:#111113; color:#f2f2f7; }
+  .card { background:rgba(255,255,255,.06); box-shadow:none; }
+}
+h1 { font-size:20px; margin:0 0 4px; }
+.sub { font-size:13px; opacity:.6; margin-bottom:16px; }
+.row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:15px; }
+.key { opacity:.6 }
+.val { font-weight:600; font-variant-numeric:tabular-nums; }
+button { appearance:none; border:none; border-radius:12px; padding:12px 16px; font-size:15px; font-weight:600; background:#0a84ff; color:#fff; width:100%; margin-top:8px; }
+button.alt { background:rgba(120,120,128,.16); color:inherit; }
+.badge { display:inline-block; padding:2px 8px; border-radius:8px; font-size:12px; font-weight:700; }
+.on { background:rgba(48,209,88,.18); color:#30d158; }
+.off { background:rgba(255,69,58,.16); color:#ff453a; }
+code { font-size:12px; opacity:.75; word-break:break-all; }
+</style>
+</head>
+<body>
+<h1>🧩 示例插件</h1>
+<div class="sub">ShareKu 插件系统演示 · HTML/JS + ShareKuBridge</div>
+
+<div class="card">
+  <div class="row"><span class="key">品牌</span><span class="val" id="brand">—</span></div>
+  <div class="row"><span class="key">型号</span><span class="val" id="model">—</span></div>
+  <div class="row"><span class="key">系统 API</span><span class="val" id="sdk">—</span></div>
+  <div class="row"><span class="key">ShareKu</span><span class="val" id="appver">—</span></div>
+</div>
+
+<div class="card">
+  <div class="row"><span class="key">服务器状态</span><span id="srvbadge" class="badge off">未知</span></div>
+  <div class="row"><span class="key">访问地址</span><span class="val" id="srvurl">—</span></div>
+</div>
+
+<div class="card">
+  <button onclick="doToast()">显示 Toast</button>
+  <button class="alt" onclick="doCopy()">复制服务器地址</button>
+  <button class="alt" onclick="doShare()">分享一句问候</button>
+  <button class="alt" onclick="doHttp()">网络请求测试</button>
+</div>
+
+<div class="card">
+  <div class="key" style="font-size:13px;margin-bottom:6px">桥调用示例</div>
+  <code>ShareKuBridge.invoke('device.info', '{}') → {"ok":true,"data":{…}}</code>
+</div>
+
+<script>
+function $(id){ return document.getElementById(id); }
+
+function call(method, params){
+  try {
+    var r = JSON.parse(ShareKuBridge.invoke(method, JSON.stringify(params || {})));
+    if (!r.ok) { alert('调用失败：' + r.error); }
+    return r;
+  } catch (e) {
+    alert('桥不可用：' + e);
+    return { ok:false };
+  }
+}
+
+function refresh(){
+  try {
+    var d = call('device.info');
+    if (d.ok) {
+      $('brand').textContent = d.data.brand;
+      $('model').textContent = d.data.model;
+      $('sdk').textContent = 'Android ' + d.data.sdk;
+      $('appver').textContent = 'v' + d.data.appVersion;
+    }
+  } catch (e) {}
+  try {
+    var s = call('server.info');
+    if (s.ok) {
+      var b = $('srvbadge'), u = $('srvurl');
+      if (s.data.running) {
+        b.className = 'badge on'; b.textContent = '运行中';
+        u.textContent = s.data.url;
+      } else {
+        b.className = 'badge off'; b.textContent = '未启动';
+        u.textContent = '—';
+      }
+    }
+  } catch (e) {}
+}
+
+function doToast(){
+  call('ui.toast', { text: '来自示例插件的问候 👋' });
+}
+
+function doCopy(){
+  var s = call('server.info');
+  if (s.ok) {
+    call('clipboard.write', { text: s.data.url || '服务器未启动' });
+    call('ui.toast', { text: '已复制' });
+  }
+}
+
+function doShare(){
+  call('share.text', { text: '我在用 ShareKu 共享文件，超好用！https://github.com/linlinya520/ShareKu' });
+}
+
+function doHttp(){
+  var r = call('http.request', { url: 'https://cdn.jsdelivr.net/gh/linlinya520/ShareKu@main/plugins/registry.json', method: 'GET' });
+  if (r.ok) { alert('HTTP ' + r.data.status + '，返回 ' + (r.data.body || '').length + ' 字符'); }
+}
+
+refresh();
+</script>
+</body>
+</html>

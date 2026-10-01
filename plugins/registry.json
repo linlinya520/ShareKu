@@ -5,12 +5,12 @@
     {
       "id": "hello-demo",
       "name": "示例插件",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ShareKu",
-      "description": "演示插件能力：设备信息、服务器状态、Toast、分享、剪贴板",
+      "description": "演示插件能力：设备信息、服务器状态、主页卡片、网络请求",
       "icon": "🧩",
       "download": "https://cdn.jsdelivr.net/gh/linlinya520/ShareKu@main/plugins/hello-demo.zip",
-      "capabilities": ["device.info", "server.info", "ui.toast", "share.text", "clipboard.write"]
+      "capabilities": ["device.info", "server.info", "ui.toast", "share.text", "clipboard.write", "home.card", "network.http"]
     }
   ]
 }

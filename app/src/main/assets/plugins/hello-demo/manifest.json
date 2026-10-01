@@ -1,0 +1,11 @@
+{
+  "id": "hello-demo",
+  "name": "示例插件",
+  "version": "1.1.0",
+  "author": "ShareKu",
+  "description": "演示插件能力：设备信息、服务器状态、主页卡片、网络请求",
+  "entry": "index.html",
+  "card": "card.html",
+  "capabilities": ["device.info", "server.info", "ui.toast", "share.text", "clipboard.write", "home.card", "network.http"],
+  "icon": "🧩"
+}

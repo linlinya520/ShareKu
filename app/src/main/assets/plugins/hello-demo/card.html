@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>插件卡片</title>
+<style>
+:root { color-scheme: light dark; --fg:#1c1c1e; --sub:rgba(60,60,67,.6); --ok:#30d158; --bad:#ff453a; }
+@media (prefers-color-scheme: dark){ :root { --fg:#f2f2f7; --sub:rgba(235,235,245,.6); } }
+* { box-sizing: border-box; }
+html,body { margin:0; height:100%; background:transparent; font-family:-apple-system,"HarmonyOS Sans SC","PingFang SC","MiSans",sans-serif; }
+.wrap { height:100%; display:flex; flex-direction:column; justify-content:center; padding:0 16px 12px; gap:8px; }
+.line { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--fg); }
+.key { color:var(--sub); }
+.val { font-weight:600; font-variant-numeric:tabular-nums; }
+.pill { font-size:11px; font-weight:700; padding:2px 8px; border-radius:8px; }
+.on { background:rgba(48,209,88,.18); color:var(--ok); }
+.off { background:rgba(255,69,58,.16); color:var(--bad); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="line"><span class="key">设备</span><span class="val" id="device">—</span></div>
+  <div class="line"><span class="key">服务器</span><span id="pill" class="pill off">检查中</span></div>
+  <div class="line"><span class="key">问候</span><span class="val">来自插件卡片 👋</span></div>
+</div>
+<script>
+function $(id){ return document.getElementById(id); }
+function call(m, p){
+  try { return JSON.parse(ShareKuBridge.invoke(m, JSON.stringify(p || {}))); }
+  catch (e) { return { ok:false }; }
+}
+try {
+  var d = call('device.info');
+  if (d.ok) { $('device').textContent = d.data.brand + ' ' + d.data.model; }
+} catch (e) {}
+try {
+  var s = call('server.info');
+  var pill = $('pill');
+  if (s.ok && s.data.running) { pill.className = 'pill on'; pill.textContent = '运行中'; }
+  else if (s.ok) { pill.className = 'pill off'; pill.textContent = '未启动'; }
+  else { pill.className = 'pill off'; pill.textContent = '未授权'; }
+} catch (e) {}
+</script>
+</body>
+</html>
