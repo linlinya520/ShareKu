@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "updated": "2026-10-02",
+  "plugins": [
+    {
+      "id": "hello-demo",
+      "name": "示例插件",
+      "version": "1.0.0",
+      "author": "ShareKu",
+      "description": "演示插件能力：设备信息、服务器状态、Toast、分享、剪贴板",
+      "icon": "🧩",
+      "download": "https://cdn.jsdelivr.net/gh/linlinya520/ShareKu@main/plugins/hello-demo.zip",
+      "capabilities": ["device.info", "server.info", "ui.toast", "share.text", "clipboard.write"]
+    }
+  ]
+}
