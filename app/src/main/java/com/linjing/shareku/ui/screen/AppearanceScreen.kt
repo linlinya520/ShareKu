@@ -564,19 +564,9 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                         hue = seedHsv[0],
                         sat = seedHsv[1],
                         value = seedHsv[2],
-                        onHueChange = { h ->
+                        onColorChange = { hh, ss, vv ->
                             if (seedEnabled) scope.launch {
-                                prefs.setSeedColor(hsvToArgb(h, seedHsv[1].coerceAtLeast(0.05f), seedHsv[2]))
-                            }
-                        },
-                        onSatChange = { s ->
-                            if (seedEnabled) scope.launch {
-                                prefs.setSeedColor(hsvToArgb(seedHsv[0], s.coerceAtLeast(0.05f), seedHsv[2]))
-                            }
-                        },
-                        onValueChange = { v ->
-                            if (seedEnabled) scope.launch {
-                                prefs.setSeedColor(hsvToArgb(seedHsv[0], seedHsv[1], v))
+                                prefs.setSeedColor(hsvToArgb(hh, ss.coerceAtLeast(0.05f), vv))
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
