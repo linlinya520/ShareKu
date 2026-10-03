@@ -71,6 +71,7 @@ object SettingsSearchRegistry {
         SettingsSearchEntry("全局壁纸", "应用内所有界面的统一背景", "外观", "壁纸背景图片视频 wallpaper", "appearance"),
         SettingsSearchEntry("视频壁纸设置", "循环播放 / 声音 / 音量", "外观", "视频壁纸播放声音音量", "appearance"),
         SettingsSearchEntry("暗黑遮罩浓度", "深色模式下壁纸上叠加的黑色遮罩", "外观", "遮罩浓度深色壁纸", "appearance"),
+        SettingsSearchEntry("日志采集", "记录 / 查看 / 导出 / 清除诊断日志（排查闪退）", "工具", "日志采集 logcat 诊断 闪退 排查 bug 导出", "logs"),
         // ═══ 插件 ═══
         SettingsSearchEntry("插件管理", "安装 / 启用 / 管理 ShareKu 插件", "插件", "插件 plugin扩展生态", "plugins"),
         SettingsSearchEntry("导入插件", "从 ZIP 安装插件", "插件", "导入 zip安装插件", "plugins"),
@@ -201,6 +202,7 @@ fun openSettingsTarget(context: Context, target: String) {
         "about" -> AboutActivity::class.java
         "changelog" -> ChangelogActivity::class.java
         "plugins" -> PluginsActivity::class.java
+        "logs" -> LogCaptureActivity::class.java
         else -> null
     }
     if (cls != null) context.startActivity(Intent(context, cls))

@@ -51,6 +51,9 @@ fun ToolsScreen(onBack: () -> Unit = {}) {
             onClick = { context.startActivity(Intent(context, PluginsActivity::class.java)) }
         )
 
+        SectionHeader("诊断")
+        LogCaptureCard()
+
         SectionHeader("安全")
         SecurityScreen(onBack = onBack, embedded = true)
 

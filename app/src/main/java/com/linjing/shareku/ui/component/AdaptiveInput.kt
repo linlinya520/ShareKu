@@ -4,9 +4,14 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -32,7 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -41,8 +48,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.drawBackdrop
@@ -53,6 +62,7 @@ import com.kyant.backdrop.highlight.Highlight
 import com.linjing.shareku.ui.theme.LocalGlassBackdrop
 import com.linjing.shareku.ui.theme.LocalGlassTuning
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * 自适应输入框：
@@ -152,59 +162,7 @@ fun AdaptiveSlider(
     colors: SliderColors = SliderDefaults.colors()
 ) {
     if (isLiquidGlassActive()) {
-        val capsule = RoundedCornerShape(50)
-        // 滑条输入通道（普通对象 + pressed 状态：帧循环里每帧读最新值）
-        val input = remember { SliderInput() }
-        input.value = value
-        input.range = valueRange.endInclusive - valueRange.start
-        Box(
-            modifier
-                .clip(capsule)
-                .liquidGlass(
-                    shape = capsule,
-                    surfaceAlpha = 0.12f,
-                    blurRadius = 6.dp,
-                    refractionHeight = 12.dp,
-                    refractionAmount = 26.dp
-                )
-                // 自持手势观察（Initial 通道，只读不消费）：
-                // 不依赖 Material3 是否转发 interactionSource（新版 M3 不转发，按压恒为 false）
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            var down = false
-                            for (change in event.changes) {
-                                if (change.pressed) {
-                                    down = true
-                                    input.fingerX = change.position.x
-                                    input.hasFinger = true
-                                }
-                            }
-                            if (down != input.pressed) {
-                                input.pressed = down
-                            }
-                        }
-                    }
-                }
-        ) {
-            Slider(
-                value = value,
-                onValueChange = onValueChange,
-                valueRange = valueRange,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.Transparent,
-                    activeTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-                    inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent
-                ),
-                thumb = { GlassSliderThumb(input = input) },
-                modifier = Modifier
-                    .padding(horizontal = 10.dp)
-                    .onGloballyPositioned { input.trackW = it.size.width.toFloat() }
-            )
-        }
+        LiquidSlider(value = value, onValueChange = onValueChange, valueRange = valueRange, modifier = modifier)
     } else {
         Slider(
             value = value,
@@ -213,6 +171,118 @@ fun AdaptiveSlider(
             colors = colors,
             modifier = modifier
         )
+    }
+}
+
+/**
+ * 液态玻璃滑条（重做）：40dp 玻璃胶囊外壳 + 7dp 细轨道 + 玻璃拇指。
+ *
+ * 视觉对齐 iOS / kyant backdrop demo 的做法：
+ * 外壳玻璃几乎透明（只留折射与边缘高光），真正的"轨道"是内部细条
+ * （已选段用主题主色、未选段低对比），拇指是独立玻璃圆。
+ * 手势自持（点按 + 横向拖动），不依赖 Material3 的 interactionSource 转发。
+ */
+@Composable
+private fun LiquidSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier
+) {
+    val capsule = RoundedCornerShape(50)
+    val density = LocalDensity.current
+    val input = remember { SliderInput() }
+    val span = (valueRange.endInclusive - valueRange.start).takeIf { it > 0f } ?: 1f
+    val fraction = ((value - valueRange.start) / span).coerceIn(0f, 1f)
+    input.value = value
+    input.range = span
+
+    var trackW by remember { mutableFloatStateOf(0f) }
+    val sidePad = 14.dp
+    val sidePadPx = with(density) { sidePad.toPx() }
+    val thumbPx = with(density) { 26.dp.toPx() }
+    val usable = (trackW - sidePadPx * 2 - thumbPx).coerceAtLeast(1f)
+
+    val emit: (Float) -> Unit = { x ->
+        if (trackW > 0f) {
+            val inner = ((x - sidePadPx - thumbPx / 2f) / usable).coerceIn(0f, 1f)
+            onValueChange(valueRange.start + inner * span)
+        }
+    }
+
+    Box(
+        modifier
+            .height(40.dp)
+            .clip(capsule)
+            .liquidGlass(
+                shape = capsule,
+                surfaceAlpha = 0.10f,
+                blurRadius = 5.dp,
+                refractionHeight = 10.dp,
+                refractionAmount = 20.dp
+            )
+            .onSizeChanged {
+                trackW = it.width.toFloat()
+                input.trackW = trackW
+            }
+            .pointerInput(span) {
+                detectTapGestures { offset ->
+                    input.hasFinger = true
+                    input.fingerX = offset.x
+                    emit(offset.x)
+                }
+            }
+            .pointerInput(span) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        input.hasFinger = true
+                        input.fingerX = offset.x
+                        input.pressed = true
+                        emit(offset.x)
+                    },
+                    onDragEnd = { input.pressed = false },
+                    onDragCancel = { input.pressed = false },
+                    onHorizontalDrag = { change, _ ->
+                        input.hasFinger = true
+                        input.fingerX = change.position.x
+                        emit(change.position.x)
+                    }
+                )
+            }
+    ) {
+        // 颜色在组合作用域取出（Canvas 的 DrawScope 内不能读 MaterialTheme）
+        val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+        val activeColor = MaterialTheme.colorScheme.primary
+        // 内部细轨道：未选段 + 已选段
+        Canvas(Modifier.fillMaxSize().padding(horizontal = sidePad)) {
+            val h = 7.dp.toPx()
+            val r = h / 2f
+            val cy = size.height / 2f
+            drawRoundRect(
+                color = trackColor,
+                topLeft = Offset(0f, cy - r),
+                size = Size(size.width, h),
+                cornerRadius = CornerRadius(r, r)
+            )
+            val w = size.width * fraction
+            if (w > 0f) {
+                drawRoundRect(
+                    color = activeColor,
+                    topLeft = Offset(0f, cy - r),
+                    size = Size(w.coerceAtLeast(h), h),
+                    cornerRadius = CornerRadius(r, r)
+                )
+            }
+        }
+        // 玻璃拇指：位置 = 内边距 + 进度 × 可用宽度
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = sidePad)
+                .offset { IntOffset((fraction * usable).roundToInt(), 0) }
+        ) {
+            GlassSliderThumb(input = input)
+        }
     }
 }
 

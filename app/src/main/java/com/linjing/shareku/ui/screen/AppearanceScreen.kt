@@ -34,6 +34,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.CacheUtils
 import com.linjing.shareku.ui.component.AdaptiveButton
+import com.linjing.shareku.ui.component.ColorPickerPanel
 import com.linjing.shareku.ui.component.AdaptiveSlider
 import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.CustomCard
@@ -546,63 +547,38 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         AdaptiveButton(
+                            modifier = Modifier.width(84.dp),
                             onClick = {
                                 if (seedEnabled) {
                                     haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
                                     scope.launch { prefs.setSeedColor(DEFAULT_SEED_COLOR) }
                                 }
                             },
-                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp)
                         ) { Text("重置", style = MaterialTheme.typography.bodyMedium) }
                     }
 
                     Spacer(Modifier.height(12.dp))
-                    // 色相
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("色相", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        Text("${seedHsv[0].toInt()}°", style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary)
-                    }
-                    AdaptiveSlider(
-                        value = seedHsv[0],
-                        onValueChange = { h ->
+                    // HSV 取色面板：色板拖动选色 + 色相条 + 明度条
+                    ColorPickerPanel(
+                        hue = seedHsv[0],
+                        sat = seedHsv[1],
+                        value = seedHsv[2],
+                        onHueChange = { h ->
                             if (seedEnabled) scope.launch {
                                 prefs.setSeedColor(hsvToArgb(h, seedHsv[1].coerceAtLeast(0.05f), seedHsv[2]))
                             }
                         },
-                        valueRange = 0f..360f,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    // 饱和度
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("饱和度", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        Text("${(seedHsv[1] * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary)
-                    }
-                    AdaptiveSlider(
-                        value = seedHsv[1],
-                        onValueChange = { s ->
+                        onSatChange = { s ->
                             if (seedEnabled) scope.launch {
-                                prefs.setSeedColor(hsvToArgb(seedHsv[0], s, seedHsv[2]))
+                                prefs.setSeedColor(hsvToArgb(seedHsv[0], s.coerceAtLeast(0.05f), seedHsv[2]))
                             }
                         },
-                        valueRange = 0f..1f,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    // 明度
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("明度", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        Text("${(seedHsv[2] * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary)
-                    }
-                    AdaptiveSlider(
-                        value = seedHsv[2],
                         onValueChange = { v ->
                             if (seedEnabled) scope.launch {
                                 prefs.setSeedColor(hsvToArgb(seedHsv[0], seedHsv[1], v))
                             }
                         },
-                        valueRange = 0.05f..1f,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -617,6 +593,7 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                             modifier = Modifier.weight(1f).padding(end = 10.dp)
                         )
                         AdaptiveButton(
+                            modifier = Modifier.width(84.dp),
                             onClick = {
                                 val parsed = hexToArgb(hexInput)
                                 if (parsed != null && seedEnabled) {
@@ -627,7 +604,7 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                                     hexInput = argbToHex(seedColor)
                                 }
                             },
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 10.dp)
                         ) { Text("应用", style = MaterialTheme.typography.bodyMedium) }
                     }
 
@@ -819,21 +796,32 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
             CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("卡片不透明度", style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Text("${(cardOpacity * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary)
+                    if (LocalUiStyle.current == "miuix") {
+                        // MIUI 风格：卡片底色由 miuix 组件库按主题色推导（恒定不透明），
+                        // 透明度设置在视觉上不生效 → 直接说明，避免「调了没反应」的困惑。
+                        Text("MIUI 风格下不生效", style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+                        Text("MIUI 组件库的卡片底色是固定的不透明色。想调透明度请切到「Material 3」或「液态玻璃」风格。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("卡片不透明度", style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text("${(cardOpacity * 100).toInt()}%",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary)
+                        }
+                        AdaptiveSlider(
+                            value = cardOpacity.coerceIn(0.15f, 1f),
+                            onValueChange = { scope.launch { prefs.setCardOpacity(it) } },
+                            valueRange = 0.15f..1f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text("100% = 完全不透明（默认）", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    AdaptiveSlider(
-                        value = cardOpacity.coerceIn(0.15f, 1f),
-                        onValueChange = { scope.launch { prefs.setCardOpacity(it) } },
-                        valueRange = 0.15f..1f,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text("100% = 完全不透明（默认）", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 

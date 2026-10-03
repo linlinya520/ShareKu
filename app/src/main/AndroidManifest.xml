@@ -135,6 +135,13 @@
             android:exported="false"
             android:theme="@style/Theme.MaterialShareKu" />
 
+        <!-- 诊断日志（记录 / 查看 / 导出 / 清除） -->
+        <activity
+            android:name=".ui.screen.LogCaptureActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialShareKu" />
+
         <!-- Plugins -->
         <activity
             android:name=".ui.screen.PluginsActivity"

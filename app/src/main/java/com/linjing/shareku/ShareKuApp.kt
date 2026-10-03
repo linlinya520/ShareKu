@@ -192,6 +192,10 @@ class ShareKuApp : Application() {
                     } catch (_: Throwable) {}
                 }
             } catch (_: Throwable) {}
+            // 额外把堆栈补写进「诊断日志」文件（即使用户没点开始记录，也能在日志页看到崩溃）
+            runCatching {
+                com.linjing.shareku.data.DiagnosticLog.appendCrash(this, thread, throwable)
+            }
             previous?.uncaughtException(thread, throwable)
         }
     }
