@@ -33,6 +33,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.isRuntimeShaderSupported
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.ui.component.WallpaperBackground
+import com.linjing.shareku.ui.theme.color.DEFAULT_SEED_COLOR
 import com.linjing.shareku.ui.theme.color.PaletteStyle
 import com.linjing.shareku.ui.theme.color.createDynamicScheme
 import com.linjing.shareku.ui.theme.color.toComposeColorScheme
@@ -50,8 +51,11 @@ val LocalUiStyle = staticCompositionLocalOf { "material" }
 /**液态玻璃背景源（仅 liquid 风格下非空）；玻璃组件用 drawBackdrop 取用 */
 val LocalGlassBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 
-private fun generateColorScheme(paletteStyle: PaletteStyle, darkTheme: Boolean): ColorScheme {
-    val seedArgb = 0xFF6750A4.toInt()
+private fun generateColorScheme(
+    paletteStyle: PaletteStyle,
+    darkTheme: Boolean,
+    seedArgb: Int = DEFAULT_SEED_COLOR
+): ColorScheme {
     return createDynamicScheme(seedArgb, paletteStyle, darkTheme).toComposeColorScheme()
 }
 
@@ -83,6 +87,10 @@ fun LocalShareTheme(
     dynamicColor: Boolean = true,
     paletteStyle: PaletteStyle = PaletteStyle.TONAL_SPOT,
     uiStyle: String = "material", // "material" | "miuix"
+    /** 自定义主题种子色（ARGB）：任意配色风格都以此色为基准生成整套配色 */
+    seedColor: Int = DEFAULT_SEED_COLOR,
+    /** 卡片（表面）不透明度：使用背景图时让卡片透出背景（1 = 完全不透明，保持原视觉） */
+    cardOpacity: Float = 1f,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -91,18 +99,19 @@ fun LocalShareTheme(
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
 
-    val colorScheme = remember(dynamicColor, paletteStyle, darkTheme) {
+    // 设备不支持动态取色时（Android 12 以下），一律回退到「自定义种子色 + 配色风格」
+    val supportDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val useDynamicColor = dynamicColor && supportDynamicColor
+
+    val colorScheme = remember(useDynamicColor, paletteStyle, darkTheme, seedColor) {
         when {
-            dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                // Dynamic colors are handled below with context
-                null
-            }
-            darkTheme -> generateColorScheme(paletteStyle, darkTheme = true)
-            else -> generateColorScheme(paletteStyle, darkTheme = false)
+            useDynamicColor -> null
+            darkTheme -> generateColorScheme(paletteStyle, darkTheme = true, seedArgb = seedColor)
+            else -> generateColorScheme(paletteStyle, darkTheme = false, seedArgb = seedColor)
         }
     } ?: run {
         // Dynamic colors need context, so can't be in remember
-        if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (useDynamicColor) {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         } else {
@@ -150,7 +159,21 @@ fun LocalShareTheme(
                 surfaceBright = colorScheme.surfaceBright.copy(alpha = 0.40f)
             )
         } else {
-            colorScheme.copy(background = Color.Transparent)
+            // 非玻璃风格 + 有背景：按「卡片不透明度」让表面系颜色透出背景，
+            // 使自定义背景更自然地嵌入界面（1 = 完全不透明，与旧版视觉一致）。
+            val a = cardOpacity.coerceIn(0.15f, 1f)
+            colorScheme.copy(
+                background = Color.Transparent,
+                surface = colorScheme.surface.copy(alpha = a),
+                surfaceVariant = colorScheme.surfaceVariant.copy(alpha = a),
+                surfaceContainerLowest = colorScheme.surfaceContainerLowest.copy(alpha = a),
+                surfaceContainerLow = colorScheme.surfaceContainerLow.copy(alpha = a),
+                surfaceContainer = colorScheme.surfaceContainer.copy(alpha = a),
+                surfaceContainerHigh = colorScheme.surfaceContainerHigh.copy(alpha = a),
+                surfaceContainerHighest = colorScheme.surfaceContainerHighest.copy(alpha = a),
+                surfaceDim = colorScheme.surfaceDim.copy(alpha = a),
+                surfaceBright = colorScheme.surfaceBright.copy(alpha = a)
+            )
         }
     } else colorScheme
 

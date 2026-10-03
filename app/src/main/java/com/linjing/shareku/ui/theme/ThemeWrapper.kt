@@ -35,7 +35,9 @@ private data class InitialPrefs(
     val themeModeName: String,
     val dynamicColor: Boolean,
     val paletteOrdinal: Int,
-    val uiStyle: String
+    val uiStyle: String,
+    val seedColor: Int,
+    val cardOpacity: Float
 )
 
 /** 退出渐糊半径（px）：返回/退出时内容渐糊（窗口退出动画期间可见） */
@@ -52,7 +54,9 @@ fun ShareThemeWrapper(content: @Composable () -> Unit) {
                 themeModeName = prefs.themeMode.first(),
                 dynamicColor = prefs.dynamicColor.first(),
                 paletteOrdinal = prefs.paletteStyleOrdinal.first(),
-                uiStyle = prefs.uiStyle.first()
+                uiStyle = prefs.uiStyle.first(),
+                seedColor = prefs.seedColor.first(),
+                cardOpacity = prefs.cardOpacity.first()
             )
         }
     }
@@ -61,6 +65,8 @@ fun ShareThemeWrapper(content: @Composable () -> Unit) {
     val paletteOrdinal by prefs.paletteStyleOrdinal.collectAsState(initial = initial.paletteOrdinal)
     val paletteStyle = PaletteStyle.entries.getOrElse(paletteOrdinal) { PaletteStyle.TONAL_SPOT }
     val uiStyle by prefs.uiStyle.collectAsState(initial = initial.uiStyle)
+    val seedColor by prefs.seedColor.collectAsState(initial = initial.seedColor)
+    val cardOpacity by prefs.cardOpacity.collectAsState(initial = initial.cardOpacity)
 
     // ═══ 动画与交互（开关）═══
     val activity = LocalContext.current as? Activity
@@ -101,7 +107,9 @@ fun ShareThemeWrapper(content: @Composable () -> Unit) {
         themeMode = ThemeMode.fromName(themeModeName),
         dynamicColor = dynamicColor,
         paletteStyle = paletteStyle,
-        uiStyle = uiStyle
+        uiStyle = uiStyle,
+        seedColor = seedColor,
+        cardOpacity = cardOpacity
     ) {
         Box(
             Modifier

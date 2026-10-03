@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.linjing.shareku.ui.theme.color.DEFAULT_SEED_COLOR
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.io.File
@@ -33,6 +34,10 @@ class PreferencesManager(private val context: Context) {
     val themeMode: Flow<String> = context.dataStore.data.map { it[KEY_THEME_MODE] ?: "SYSTEM" }
     val dynamicColor: Flow<Boolean> = context.dataStore.data.map { it[KEY_DYNAMIC_COLOR] ?: true }
     val paletteStyleOrdinal: Flow<Int> = context.dataStore.data.map { it[KEY_PALETTE_STYLE] ?: 0 }
+    // 自定义主题种子色（ARGB）：任意配色风格下都可用的「自定义颜色」
+    val seedColor: Flow<Int> = context.dataStore.data.map { it[KEY_SEED_COLOR] ?: DEFAULT_SEED_COLOR }
+    // 卡片（表面）不透明度：使用背景图时让卡片透出一点背景（0.15 = 几乎全透，1 = 完全不透明）
+    val cardOpacity: Flow<Float> = context.dataStore.data.map { it[KEY_CARD_OPACITY] ?: 1f }
     val autoCleanIntervalMinutes: Flow<Int> = context.dataStore.data.map { it[KEY_AUTO_CLEAN] ?: 0 }
     val lastCleanupTime: Flow<Long> = context.dataStore.data.map { it[KEY_LAST_CLEAN_TIME] ?: 0L }
     val receiveDir: Flow<String> = context.dataStore.data.map { it[KEY_RECEIVE_DIR] ?: "/sdcard/Download/ShareKu" }
@@ -102,6 +107,8 @@ class PreferencesManager(private val context: Context) {
     suspend fun setThemeMode(value: String) { context.dataStore.edit { it[KEY_THEME_MODE] = value } }
     suspend fun setDynamicColor(value: Boolean) { context.dataStore.edit { it[KEY_DYNAMIC_COLOR] = value } }
     suspend fun setPaletteStyleOrdinal(value: Int) { context.dataStore.edit { it[KEY_PALETTE_STYLE] = value } }
+    suspend fun setSeedColor(value: Int) { context.dataStore.edit { it[KEY_SEED_COLOR] = value } }
+    suspend fun setCardOpacity(value: Float) { context.dataStore.edit { it[KEY_CARD_OPACITY] = value.coerceIn(0.15f, 1f) } }
     suspend fun setAutoCleanInterval(minutes: Int) { context.dataStore.edit { it[KEY_AUTO_CLEAN] = minutes } }
     suspend fun setLastCleanupTime(time: Long) { context.dataStore.edit { it[KEY_LAST_CLEAN_TIME] = time } }
     suspend fun setReceiveDir(value: String) { context.dataStore.edit { it[KEY_RECEIVE_DIR] = value } }
@@ -150,6 +157,8 @@ class PreferencesManager(private val context: Context) {
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         private val KEY_PALETTE_STYLE = intPreferencesKey("palette_style")
+        private val KEY_SEED_COLOR = intPreferencesKey("seed_color")
+        private val KEY_CARD_OPACITY = floatPreferencesKey("card_opacity")
         private val KEY_AUTO_CLEAN = intPreferencesKey("auto_clean_interval")
         private val KEY_LAST_CLEAN_TIME = longPreferencesKey("last_cleanup_time")
         private val KEY_RECEIVE_DIR = stringPreferencesKey("receive_dir")

@@ -90,13 +90,26 @@ class ShareActivity : ComponentActivity() {
         val initialTheme = runBlocking { AppSingletons.preferencesManager.themeMode.first() }
         val initialPaletteOrdinal = runBlocking { AppSingletons.preferencesManager.paletteStyleOrdinal.first() }
         val initialUiStyle = runBlocking { AppSingletons.preferencesManager.uiStyle.first() }
+        val initialDynamicColor = runBlocking { AppSingletons.preferencesManager.dynamicColor.first() }
+        val initialSeedColor = runBlocking { AppSingletons.preferencesManager.seedColor.first() }
+        val initialCardOpacity = runBlocking { AppSingletons.preferencesManager.cardOpacity.first() }
         setContent {
             val themeModeName by AppSingletons.preferencesManager.themeMode.collectAsState(initial = initialTheme)
             val paletteOrdinal by AppSingletons.preferencesManager.paletteStyleOrdinal.collectAsState(initial = initialPaletteOrdinal)
             val paletteStyle = com.linjing.shareku.ui.theme.color.PaletteStyle.entries
                 .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
             val uiStyle by AppSingletons.preferencesManager.uiStyle.collectAsState(initial = initialUiStyle)
-            LocalShareTheme(themeMode = ThemeMode.fromName(themeModeName), paletteStyle = paletteStyle, uiStyle = uiStyle) {
+            val dynamicColor by AppSingletons.preferencesManager.dynamicColor.collectAsState(initial = initialDynamicColor)
+            val seedColor by AppSingletons.preferencesManager.seedColor.collectAsState(initial = initialSeedColor)
+            val cardOpacity by AppSingletons.preferencesManager.cardOpacity.collectAsState(initial = initialCardOpacity)
+            LocalShareTheme(
+                themeMode = ThemeMode.fromName(themeModeName),
+                dynamicColor = dynamicColor,
+                paletteStyle = paletteStyle,
+                uiStyle = uiStyle,
+                seedColor = seedColor,
+                cardOpacity = cardOpacity
+            ) {
                 ShareSheetDialog(
                     files = cacheFiles,
                     url = url,

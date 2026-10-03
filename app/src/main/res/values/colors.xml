@@ -8,6 +8,12 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#FF50998B</color>
+    <!-- Activity 启动瞬间的窗口背景（Compose 首帧之前可见）。
+         浅色 = 主题 surface；深色在 values-night 覆盖 → 修复深色模式进二级页「白闪」。 -->
+    <color name="shareku_window_bg">#FFFDFBFF</color>
+    <!-- 固定深色窗口背景（运行时按 App 内主题强制指定时使用） -->
+    <color name="shareku_window_bg_dark">#FF141218</color>
+    <color name="shareku_window_bg_light">#FFFDFBFF</color>
     <color name="widget_bg">#FFFFFFFF</color>
     <color name="widget_border">#FFDDE4E1</color>
     <color name="widget_text">#FF2D3436</color>

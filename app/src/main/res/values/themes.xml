@@ -3,8 +3,15 @@
     <style name="Theme.MaterialShareKu" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- 启动瞬间（Compose 首帧前）的窗口底色：浅色主题用 surface；
+             深色由 values-night 覆盖，且运行时还会按 App 内主题再校正一次 → 消除「白闪」 -->
+        <item name="android:windowBackground">@color/shareku_window_bg</item>
         <!-- 统一 Activity 转场：新页从右滑入 / 返回时顶页滑出 + 底层轻移恢复（miuix 经典风） -->
         <item name="android:windowAnimationStyle">@style/ShareKuWindowAnimation</item>
+    </style>
+    <!-- 深色版：运行时按 App 内主题（含强制深色）动态 setTheme 使用 -->
+    <style name="Theme.MaterialShareKu.Dark" parent="@style/Theme.MaterialShareKu">
+        <item name="android:windowBackground">@color/shareku_window_bg_dark</item>
     </style>
     <style name="ShareKuWindowAnimation" parent="@android:style/Animation.Activity">
         <item name="android:activityOpenEnterAnimation">@anim/activity_open_enter</item>

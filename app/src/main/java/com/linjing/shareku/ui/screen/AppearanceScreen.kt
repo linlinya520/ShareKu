@@ -33,6 +33,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.linjing.shareku.AppSingletons
 import com.linjing.shareku.CacheUtils
+import com.linjing.shareku.ui.component.AdaptiveButton
 import com.linjing.shareku.ui.component.AdaptiveSlider
 import com.linjing.shareku.ui.component.AdaptiveTextField
 import com.linjing.shareku.ui.component.CustomCard
@@ -50,6 +51,11 @@ import com.linjing.shareku.ui.theme.resolveGlassTuning
 import com.linjing.shareku.ui.theme.ShareThemeWrapper
 import com.linjing.shareku.ui.theme.ThemeMode
 import com.linjing.shareku.ui.theme.color.PaletteStyle
+import com.linjing.shareku.ui.theme.color.DEFAULT_SEED_COLOR
+import com.linjing.shareku.ui.theme.color.argbToHex
+import com.linjing.shareku.ui.theme.color.argbToHsv
+import com.linjing.shareku.ui.theme.color.hexToArgb
+import com.linjing.shareku.ui.theme.color.hsvToArgb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +73,10 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
     var cropIsVideo by remember { mutableStateOf(false) }
 
     val dynamicColor by prefs.dynamicColor.collectAsState(initial = true)
+    // 动态取色（莫奈取色）依赖 Android 12+。设备不支持时必须「自动关停」而不是锁死，
+    // 否则开关显示为「开」却无法点击，且下方配色方案也被连带禁用 → 用户完全改不了配色。
+    val dynamicSupported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    val dynamicActive = dynamicColor && dynamicSupported
     val themeModeName by prefs.themeMode.collectAsState(initial = "SYSTEM")
     val paletteOrdinal by prefs.paletteStyleOrdinal.collectAsState(initial = 0)
     val currentStyle = PaletteStyle.entries.getOrElse(paletteOrdinal) { PaletteStyle.TONAL_SPOT }
@@ -403,8 +413,8 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
             Text("莫奈取色", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
             Text(
-                text = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
-                    "从壁纸自动提取主题颜色" else "系统版本不支持 (需 Android 12+)",
+                text = if (dynamicSupported)
+                    "从壁纸自动提取主题颜色" else "系统版本不支持（需 Android 12+），将使用下方「自定义颜色 / 配色方案」",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 12.dp)
@@ -425,15 +435,18 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                     Column(Modifier.weight(1f)) {
                         Text("动态取色", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
-                                "启用后下方的配色方案将被忽略" else "系统版本不支持",
+                            when {
+                                !dynamicSupported -> "设备不支持（Android 12+ 才可用），已自动改用手动配色"
+                                dynamicColor -> "启用后下方的配色方案将被忽略"
+                                else -> "已关闭 → 使用下方的自定义颜色 / 配色方案"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     AppSwitch(
-                        checked = dynamicColor,
-                        enabled = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S,
+                        checked = dynamicActive,
+                        enabled = dynamicSupported,
                         onCheckedChange = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             scope.launch { prefs.setDynamicColor(it) }
@@ -453,7 +466,7 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
 
             styles.forEachIndexed { index, style ->
                 val selected = style == selectedStyle
-                val enabled = !dynamicColor
+                val enabled = !dynamicActive
                 val isSingle = styles.size == 1
 
                 CustomCard(
@@ -495,6 +508,134 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                                 scope.launch { prefs.setPaletteStyleOrdinal(style.ordinal) }
                             }
                         })
+                    }
+                }
+            }
+
+            // ═══ 自定义颜色（主题种子色）═══
+            Spacer(Modifier.height(16.dp))
+            Text("自定义颜色", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            Text("任意颜色都能作为主题种子，整套配色（含 MIUI 风格的强调色）会按它重新生成",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+
+            val seedColor by prefs.seedColor.collectAsState(initial = DEFAULT_SEED_COLOR)
+            val seedEnabled = !dynamicActive
+            val seedHsv = argbToHsv(seedColor)
+            var hexInput by remember(seedColor) { mutableStateOf(argbToHex(seedColor)) }
+
+            CustomCard(
+                cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp)) {
+                    // 预览 + 重置
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            Modifier.size(40.dp), CircleShape,
+                            color = if (seedEnabled) Color(seedColor)
+                            else Color(seedColor).copy(alpha = 0.38f)
+                        ) {}
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("主题种子色", style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold)
+                            Text(argbToHex(seedColor), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        AdaptiveButton(
+                            onClick = {
+                                if (seedEnabled) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                                    scope.launch { prefs.setSeedColor(DEFAULT_SEED_COLOR) }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                        ) { Text("重置", style = MaterialTheme.typography.bodyMedium) }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    // 色相
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("色相", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text("${seedHsv[0].toInt()}°", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    AdaptiveSlider(
+                        value = seedHsv[0],
+                        onValueChange = { h ->
+                            if (seedEnabled) scope.launch {
+                                prefs.setSeedColor(hsvToArgb(h, seedHsv[1].coerceAtLeast(0.05f), seedHsv[2]))
+                            }
+                        },
+                        valueRange = 0f..360f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    // 饱和度
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("饱和度", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text("${(seedHsv[1] * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    AdaptiveSlider(
+                        value = seedHsv[1],
+                        onValueChange = { s ->
+                            if (seedEnabled) scope.launch {
+                                prefs.setSeedColor(hsvToArgb(seedHsv[0], s, seedHsv[2]))
+                            }
+                        },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    // 明度
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("明度", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text("${(seedHsv[2] * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    AdaptiveSlider(
+                        value = seedHsv[2],
+                        onValueChange = { v ->
+                            if (seedEnabled) scope.launch {
+                                prefs.setSeedColor(hsvToArgb(seedHsv[0], seedHsv[1], v))
+                            }
+                        },
+                        valueRange = 0.05f..1f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    // 精确输入：HEX
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        AdaptiveTextField(
+                            value = hexInput,
+                            onValueChange = { hexInput = it },
+                            label = "HEX",
+                            placeholder = "#FF5722",
+                            modifier = Modifier.weight(1f).padding(end = 10.dp)
+                        )
+                        AdaptiveButton(
+                            onClick = {
+                                val parsed = hexToArgb(hexInput)
+                                if (parsed != null && seedEnabled) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                                    scope.launch { prefs.setSeedColor(parsed) }
+                                } else {
+                                    // 输入不合法：回显当前颜色，不写入脏值
+                                    hexInput = argbToHex(seedColor)
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                        ) { Text("应用", style = MaterialTheme.typography.bodyMedium) }
+                    }
+
+                    if (!seedEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("动态取色已开启，关闭后此处生效",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary)
                     }
                 }
             }
@@ -663,6 +804,36 @@ fun AppearanceScreen(onBack: () -> Unit, embedded: Boolean = false) {
                         valueRange = 0f..1f,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+            }
+
+            // ═══ 卡片不透明度 ═══
+            Spacer(Modifier.height(16.dp))
+            Text("卡片不透明度", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            Text("使用自定义背景时，卡片 / 面板的透明度——越低背景越透出来，界面更融为一体（液态玻璃风格由「质感档位」控制）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp))
+            val cardOpacity by prefs.cardOpacity.collectAsState(initial = 1f)
+            CustomCard(cornerRadius = 24.dp, border = null, clickable = false, enableHaptic = false,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("卡片不透明度", style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("${(cardOpacity * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    AdaptiveSlider(
+                        value = cardOpacity.coerceIn(0.15f, 1f),
+                        onValueChange = { scope.launch { prefs.setCardOpacity(it) } },
+                        valueRange = 0.15f..1f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("100% = 完全不透明（默认）", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 

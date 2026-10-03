@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
                         dynamicColor = prefs.dynamicColor.first(),
                         paletteOrdinal = prefs.paletteStyleOrdinal.first(),
                         uiStyle = prefs.uiStyle.first(),
+                        seedColor = prefs.seedColor.first(),
+                        cardOpacity = prefs.cardOpacity.first(),
                         layoutMode = prefs.layoutMode.first()
                     )
                 }
@@ -68,11 +70,15 @@ class MainActivity : ComponentActivity() {
                 .getOrElse(paletteOrdinal) { com.linjing.shareku.ui.theme.color.PaletteStyle.TONAL_SPOT }
             val uiStyle by prefs.uiStyle.collectAsState(initial = initial.uiStyle)
             val layoutMode by prefs.layoutMode.collectAsState(initial = initial.layoutMode)
+            val seedColor by prefs.seedColor.collectAsState(initial = initial.seedColor)
+            val cardOpacity by prefs.cardOpacity.collectAsState(initial = initial.cardOpacity)
             LocalShareTheme(
                 themeMode = ThemeMode.fromName(themeModeName),
                 dynamicColor = dynamicColor,
                 paletteStyle = paletteStyle,
-                uiStyle = uiStyle
+                uiStyle = uiStyle,
+                seedColor = seedColor,
+                cardOpacity = cardOpacity
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -197,6 +203,8 @@ private data class InitialUiState(
     val dynamicColor: Boolean,
     val paletteOrdinal: Int,
     val uiStyle: String,
+    val seedColor: Int,
+    val cardOpacity: Float,
     val layoutMode: String
 )
 

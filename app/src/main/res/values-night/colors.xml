@@ -7,4 +7,6 @@
     <color name="widget_accent">#FF6FB3A4</color>
     <color name="widget_dot_off">#FF4A5551</color>
     <color name="widget_bg2">#FF191E1D</color>
+    <!-- 系统深色下的启动窗口背景（避免进二级页白闪） -->
+    <color name="shareku_window_bg">#FF141218</color>
 </resources>
