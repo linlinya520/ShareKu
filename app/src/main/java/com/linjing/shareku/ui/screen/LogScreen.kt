@@ -37,6 +37,8 @@ fun LogScreen(
     }
 
     Scaffold(
+        // 日志是文字密集页：固定不透明底板，避免壁纸/背景把文字「透」到读不清
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 1f),
         topBar = {
             AppTopBar(
                 title = { Text("连接日志") },

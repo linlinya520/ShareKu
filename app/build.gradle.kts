@@ -12,8 +12,8 @@ android {
         applicationId = "com.linjing.shareku"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "2.0.1"
+        versionCode = 12
+        versionName = "2.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -54,6 +54,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // JDK21 新增的 List.removeFirst/removeLast/getFirst…（SequencedCollection）
+        // 在 Android 15 以下并不存在。开启 core library desugaring 后会被转写为兼容实现，
+        // 避免旧系统上 NoSuchMethodError 直接闪退（本项目曾真实踩到）。
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -140,6 +144,9 @@ dependencies {
     // Media3（本地视频壁纸播放；texture_view 模式保证画面可被液态玻璃背景层采样）
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+
+    // Core library desugaring：兼容 JDK21 API（List.removeFirst/removeLast 等），旧系统防崩溃
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Testing
     testImplementation(libs.junit)

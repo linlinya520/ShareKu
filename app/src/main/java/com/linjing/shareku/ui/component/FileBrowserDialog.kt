@@ -150,7 +150,9 @@ fun FileBrowserDialog(
 
     BackHandler {
         if (history.size > 1) {
-            history.removeLast()
+            // ⚠️ 不要用 removeLast()：那是 JDK21 / Android 15 的 API，
+            // 在旧系统（如 Android 11）会抛 NoSuchMethodError 直接闪退。
+            history.removeAt(history.size - 1)
             currentPath = history.last()
         } else {
             onDismiss()
@@ -181,7 +183,8 @@ fun FileBrowserDialog(
                     navigationIcon = {
                         if (history.size > 1) {
                             IconButton(onClick = {
-                                history.removeLast()
+                                // 同上：避免 JDK21 的 List.removeLast()
+                                history.removeAt(history.size - 1)
                                 currentPath = history.last()
                             }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回上级")

@@ -153,8 +153,10 @@ fun LocalShareTheme(
                 surfaceContainer = colorScheme.surfaceContainer.copy(alpha = 0.40f),
                 surfaceContainerLow = colorScheme.surfaceContainerLow.copy(alpha = 0.38f),
                 surfaceContainerLowest = colorScheme.surfaceContainerLowest.copy(alpha = 0.34f),
-                surfaceContainerHigh = colorScheme.surfaceContainerHigh.copy(alpha = 0.44f),
-                surfaceContainerHighest = colorScheme.surfaceContainerHighest.copy(alpha = 0.46f),
+                // 弹窗 / 强调容器：液态玻璃下也保持「强磨砂」——不透明度拉高，
+                // 否则浮在下层内容之上的窗口会跟后面的内容重叠（可读性事故）。
+                surfaceContainerHigh = colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+                surfaceContainerHighest = colorScheme.surfaceContainerHighest.copy(alpha = 0.94f),
                 surfaceDim = colorScheme.surfaceDim.copy(alpha = 0.40f),
                 surfaceBright = colorScheme.surfaceBright.copy(alpha = 0.40f)
             )
@@ -169,8 +171,9 @@ fun LocalShareTheme(
                 surfaceContainerLowest = colorScheme.surfaceContainerLowest.copy(alpha = a),
                 surfaceContainerLow = colorScheme.surfaceContainerLow.copy(alpha = a),
                 surfaceContainer = colorScheme.surfaceContainer.copy(alpha = a),
-                surfaceContainerHigh = colorScheme.surfaceContainerHigh.copy(alpha = a),
-                surfaceContainerHighest = colorScheme.surfaceContainerHighest.copy(alpha = a),
+                // 注：surfaceContainerHigh / surfaceContainerHighest 不参与透明化 ——
+                // 它们是「悬浮在其它内容之上」的弹窗/强调容器，必须保持不透明，
+                // 否则弹窗文字会与下层内容重叠（可读性事故）。
                 surfaceDim = colorScheme.surfaceDim.copy(alpha = a),
                 surfaceBright = colorScheme.surfaceBright.copy(alpha = a)
             )

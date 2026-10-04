@@ -61,7 +61,8 @@ object AppSingletons {
     @Synchronized
     fun dequeuePendingIp() {
         if (pendingIpQueue.isNotEmpty()) {
-            pendingIpQueue.removeFirst()
+            // ⚠️ 不用 removeFirst()：JDK21 / Android 15 才有，旧系统会 NoSuchMethodError 崩溃
+            pendingIpQueue.removeAt(0)
         }
         _pendingCount.value = pendingIpQueue.size
         val next = pendingIpQueue.firstOrNull()

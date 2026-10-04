@@ -176,13 +176,28 @@ object DiagnosticLog {
         }
     }
 
-    /** Android 7+ 用 --uid 可同时抓到主进程与 :shizuku 等子进程 */
+    /**
+     * Android 7+ 名义上支持 `--uid`（可同时抓主进程与 :shizuku 子进程），
+     * 但部分厂商 ROM（实测 vivo Android 11）的 logcat 不支持，会直接输出
+     * "logcat: Unknown option '--uid=...'." 而抓不到任何日志 → 这里先探测再决定。
+     */
     private fun logcatCommand(): List<String> {
         val uid = android.os.Process.myUid()
         val pid = android.os.Process.myPid()
-        val filter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) "--uid=$uid" else "--pid=$pid"
+        val useUid = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && probeUidSupport(uid)
+        val filter = if (useUid) "--uid=$uid" else "--pid=$pid"
         return listOf("/system/bin/logcat", "-v", "threadtime", filter)
     }
+
+    /** 探测 logcat 是否支持 --uid（跑一次 dump，看是否报 Unknown option） */
+    private fun probeUidSupport(uid: Int): Boolean = runCatching {
+        val p = ProcessBuilder("/system/bin/logcat", "--uid=$uid", "-d", "-t", "1")
+            .redirectErrorStream(true)
+            .start()
+        val out = p.inputStream.bufferedReader().readText().take(300)
+        runCatching { p.destroy() }
+        !out.contains("Unknown option")
+    }.getOrDefault(true)
 
     private fun appVersion(context: Context): String = runCatching {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"

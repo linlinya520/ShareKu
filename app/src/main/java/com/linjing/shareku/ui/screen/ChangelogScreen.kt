@@ -33,6 +33,13 @@ fun ChangelogScreen(onBack: () -> Unit) {
 
     val changelogs = remember {
         listOf(
+            ChangelogEntry("v2.0.2", "2026-10", listOf(
+                "修复：Shizuku 模式下进入受保护目录后按返回键闪退（JDK21 专有 API 在旧系统不存在；已改写并开启 core library desugaring 全局兜底）",
+                "修复：诊断日志在部分机型（vivo Android 11）抓不到内容（logcat 不支持 --uid，现自动改用 --pid）",
+                "修复：打开二级页面后背景约 1 秒才出现（壁纸解码结果加入内存缓存，打开即显示）",
+                "修复：连接日志页背景全透明、文字与壁纸重叠（改为不透明底板）",
+                "优化：悬浮弹窗不再套用「卡片不透明度」，液态玻璃下改为强磨砂，避免与下层内容重叠",
+            )),
             ChangelogEntry("v2.0.1", "2026-10", listOf(
                 "「自定义颜色」升级为 HSV 取色面板：色板拖动选色 + 色相条 + 明度条，HEX 可精确输入",
                 "液态玻璃滑条重做：玻璃胶囊外壳 + 7dp 细轨道 + 玻璃拇指，跟手更自然",

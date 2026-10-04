@@ -70,11 +70,18 @@ fun WallpaperBackground(
         // ① 壁纸内容（解码一律放 IO 线程：大图 jpeg 在主线程解码会卡死首帧）
         when (source) {
             "image" -> {
-                val bmp by produceState<ImageBitmap?>(initialValue = null, path) {
-                    value = withContext(Dispatchers.IO) {
-                        if (path.isNotEmpty() && File(path).exists()) {
-                            try { BitmapFactory.decodeFile(path)?.asImageBitmap() } catch (_: Exception) { null }
-                        } else null
+                // 缓存命中 → 立即显示（不再等解码，修「二级页 1 秒后才出现背景」）
+                val bmp by produceState<ImageBitmap?>(initialValue = WallpaperCache.get("img:$path"), path) {
+                    if (value == null) {
+                        value = withContext(Dispatchers.IO) {
+                            if (path.isNotEmpty() && File(path).exists()) {
+                                try {
+                                    BitmapFactory.decodeFile(path)?.asImageBitmap()?.also {
+                                        WallpaperCache.put("img:$path", it)
+                                    }
+                                } catch (_: Exception) { null }
+                            } else null
+                        }
                     }
                 }
                 val img = bmp
@@ -178,13 +185,17 @@ fun WallpaperBackground(
                 if (remember(context) { isLiveSystemWallpaper(context) }) {
                     Box(Modifier.fillMaxSize())
                 } else {
-                    val sysBmp by produceState<ImageBitmap?>(initialValue = null) {
-                        value = withContext(Dispatchers.IO) {
-                            try {
-                                val wm = android.app.WallpaperManager.getInstance(context)
-                                val d = wm.drawable
-                                if (d != null) drawableToBitmap(d).asImageBitmap() else null
-                            } catch (_: Throwable) { null }
+                    val sysBmp by produceState<ImageBitmap?>(initialValue = WallpaperCache.get("sys")) {
+                        if (value == null) {
+                            value = withContext(Dispatchers.IO) {
+                                try {
+                                    val wm = android.app.WallpaperManager.getInstance(context)
+                                    val d = wm.drawable
+                                    if (d != null) {
+                                        drawableToBitmap(d).asImageBitmap()?.also { WallpaperCache.put("sys", it) }
+                                    } else null
+                                } catch (_: Throwable) { null }
+                            }
                         }
                     }
                     val sysImg = sysBmp
@@ -203,13 +214,16 @@ fun WallpaperBackground(
             }
             else -> {
                 // default（及未知来源占位）
-                val defaultBmp by produceState<ImageBitmap?>(initialValue = null) {
-                    value = withContext(Dispatchers.IO) {
-                        try {
-                            context.assets.open("optional/wallpaper_default.jpg").use {
-                                BitmapFactory.decodeStream(it)?.asImageBitmap()
-                            }
-                        } catch (_: Exception) { null }
+                val defaultBmp by produceState<ImageBitmap?>(initialValue = WallpaperCache.get("assets:default")) {
+                    if (value == null) {
+                        value = withContext(Dispatchers.IO) {
+                            try {
+                                context.assets.open("optional/wallpaper_default.jpg").use {
+                                    BitmapFactory.decodeStream(it)?.asImageBitmap()
+                                        ?.also { bmp -> WallpaperCache.put("assets:default", bmp) }
+                                }
+                            } catch (_: Exception) { null }
+                        }
                     }
                 }
                 val img = defaultBmp
@@ -236,6 +250,28 @@ fun WallpaperBackground(
         }
     }
 }
+/**
+ * 壁纸解码结果内存缓存（LRU，最多 3 张，按来源 key 区分）。
+ *
+ * 为什么需要：打开二级页面会重建组合树，若每次都重新解码（大图 jpeg / assets / 系统壁纸），
+ * 就会出现「进入后先空白约 1 秒才出现背景」。命中缓存后只剩一次 Map 查询 → 打开即显示。
+ */
+internal object WallpaperCache {
+    private const val MAX = 3
+    private val map = object : LinkedHashMap<String, ImageBitmap>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean =
+            size > MAX
+    }
+
+    @Synchronized
+    fun get(key: String): ImageBitmap? = map[key]
+
+    @Synchronized
+    fun put(key: String, bmp: ImageBitmap) {
+        map[key] = bmp
+    }
+}
+
 /** Drawable → Bitmap（系统壁纸可能是非 BitmapDrawable） */
 private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): android.graphics.Bitmap {
     if (drawable is android.graphics.drawable.BitmapDrawable) {
